@@ -1,0 +1,4 @@
+[submodule "ionian-contracts-poc"]
+	path = ionian-contracts-poc
+  branch = main
+	url = https://github.com/Ionian-Web3-Storage/ionian-contracts-poc.git
