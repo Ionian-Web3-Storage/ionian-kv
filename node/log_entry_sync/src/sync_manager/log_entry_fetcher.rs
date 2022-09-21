@@ -198,7 +198,7 @@ pub enum LogFetchProgress {
 }
 
 fn submission_topic_to_stream_ids(topic: Vec<u8>) -> Vec<H256> {
-    if topic.len() == 0 || topic.len() % 32 != 0 || H256::from_slice(&topic[..32]) != STREAM_DOMAIN
+    if topic.is_empty() || topic.len() % 32 != 0 || H256::from_slice(&topic[..32]) != STREAM_DOMAIN
     {
         return vec![];
     }

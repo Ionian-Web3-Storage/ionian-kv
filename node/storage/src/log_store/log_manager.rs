@@ -123,7 +123,7 @@ impl LogStoreWrite for LogManager {
     fn revert_to(&mut self, tx_seq: u64) -> Result<()> {
         self.revert_merkle_tree(tx_seq)?;
         let start_index = ({
-            let ref this = self;
+            let this = &self;
             if this.pora_chunks_merkle.leaves() == 0 {
                 0
             } else {
@@ -313,11 +313,11 @@ impl StreamRead for LogManager {
 }
 
 impl StreamWrite for LogManager {
-    fn reset_stream_sync(&self, connection: &Connection, stream_ids: &Vec<H256>) -> Result<()> {
+    fn reset_stream_sync(&self, connection: &Connection, stream_ids: &[u8]) -> Result<()> {
         self.stream_store.reset_stream_sync(connection, stream_ids)
     }
 
-    fn update_stream_ids(&self, connection: &Connection, stream_ids: &Vec<H256>) -> Result<()> {
+    fn update_stream_ids(&self, connection: &Connection, stream_ids: &[u8]) -> Result<()> {
         self.stream_store.update_stream_ids(connection, stream_ids)
     }
 
@@ -583,7 +583,7 @@ impl LogManager {
 
     fn append_entries(&mut self, flow_entry_array: ChunkArray) -> Result<()> {
         let last_chunk_start_index = {
-            let ref this = self;
+            let this = &self;
             if this.pora_chunks_merkle.leaves() == 0 {
                 0
             } else {

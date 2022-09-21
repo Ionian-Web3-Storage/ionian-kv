@@ -21,16 +21,13 @@ impl StreamReplayer {
     }
 
     pub async fn run(&self) {
-        let connection;
-        match self.store.read().await.get_stream_db_connection() {
-            Ok(conn) => {
-                connection = conn;
-            }
+        let connection = match self.store.read().await.get_stream_db_connection() {
+            Ok(conn) => conn,
             Err(e) => {
                 error!("build sqlite connection error: e={:?}", e);
                 return;
             }
-        }
+        };
         let mut tx_seq;
         match self
             .store
@@ -51,7 +48,7 @@ impl StreamReplayer {
             match maybe_tx {
                 Ok(Some(tx)) => {
                     let mut skip = false;
-                    if tx.stream_ids.len() == 0 {
+                    if tx.stream_ids.is_empty() {
                         skip = true;
                     } else {
                         for id in tx.stream_ids.iter() {

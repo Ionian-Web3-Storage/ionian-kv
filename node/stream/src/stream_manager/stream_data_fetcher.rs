@@ -77,7 +77,7 @@ impl StreamDataFetcher {
             );
             for j in (i..tasks_end_index).step_by(ENTRIES_PER_SEGMENT) {
                 let task_end_index = cmp::min(tasks_end_index, j + ENTRIES_PER_SEGMENT as u64);
-                tasks.push(Box::pin(self.download(&tx, j, task_end_index)));
+                tasks.push(Box::pin(self.download(tx, j, task_end_index)));
             }
             for task in tasks.into_iter() {
                 task.await?;
@@ -88,16 +88,13 @@ impl StreamDataFetcher {
     }
 
     pub async fn run(&self) {
-        let connection;
-        match self.store.read().await.get_stream_db_connection() {
-            Ok(conn) => {
-                connection = conn;
-            }
+        let connection = match self.store.read().await.get_stream_db_connection() {
+            Ok(conn) => conn,
             Err(e) => {
                 error!("build sqlite connection error: e={:?}", e);
                 return;
             }
-        }
+        };
         let mut tx_seq;
         match self
             .store
@@ -118,7 +115,7 @@ impl StreamDataFetcher {
             match maybe_tx {
                 Ok(Some(tx)) => {
                     let mut skip = false;
-                    if tx.stream_ids.len() == 0 {
+                    if tx.stream_ids.is_empty() {
                         skip = true;
                     } else {
                         for id in tx.stream_ids.iter() {

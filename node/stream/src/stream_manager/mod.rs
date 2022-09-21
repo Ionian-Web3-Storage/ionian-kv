@@ -5,6 +5,7 @@ use crate::StreamConfig;
 use anyhow::Result;
 use ethereum_types::H256;
 use jsonrpsee::http_client::HttpClient;
+use ssz::Encode;
 use std::{collections::HashSet, sync::Arc};
 use storage::log_store::Store;
 use task_executor::TaskExecutor;
@@ -35,7 +36,7 @@ impl StreamManager {
                 store
                     .write()
                     .await
-                    .reset_stream_sync(&connection, &config.stream_ids)?;
+                    .reset_stream_sync(&connection, &config.stream_ids.as_ssz_bytes())?;
                 reseted = true;
                 break;
             }
@@ -45,7 +46,7 @@ impl StreamManager {
             store
                 .write()
                 .await
-                .update_stream_ids(&connection, &config.stream_ids)?;
+                .update_stream_ids(&connection, &config.stream_ids.as_ssz_bytes())?;
         }
         // spawn data sync and stream replay threads
         let fetcher = StreamDataFetcher::new(config.clone(), store.clone(), client).await?;

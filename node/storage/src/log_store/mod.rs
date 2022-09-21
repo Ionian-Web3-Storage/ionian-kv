@@ -144,9 +144,9 @@ pub trait StreamRead {
 }
 
 pub trait StreamWrite {
-    fn reset_stream_sync(&self, connection: &Connection, stream_ids: &Vec<H256>) -> Result<()>;
+    fn reset_stream_sync(&self, connection: &Connection, stream_ids: &[u8]) -> Result<()>;
 
-    fn update_stream_ids(&self, connection: &Connection, stream_ids: &Vec<H256>) -> Result<()>;
+    fn update_stream_ids(&self, connection: &Connection, stream_ids: &[u8]) -> Result<()>;
 
     fn update_stream_data_sync_progress(
         &self,

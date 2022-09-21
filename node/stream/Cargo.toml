@@ -22,3 +22,5 @@ rpc = {path = "../rpc"}
 contract-interface = { path = "../../common/contract-interface" }
 rusqlite = { version = "0.28.0", features = ["bundled"] }
 tracing = "0.1.35"
+eth2_ssz = "0.4.0"
+eth2_ssz_derive = "0.3.0"

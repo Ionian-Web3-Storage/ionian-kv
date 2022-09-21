@@ -25,7 +25,7 @@ impl IonianKVConfig {
         }
         stream_ids.sort();
         stream_ids.dedup();
-        if stream_ids.len() == 0 {
+        if stream_ids.is_empty() {
             error!("{}", format!("stream ids is empty"))
         }
         let stream_set = HashSet::from_iter(stream_ids.iter().cloned());

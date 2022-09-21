@@ -1,6 +1,6 @@
 use anyhow::Result;
 use ethereum_types::H256;
-use ssz::{Decode, Encode};
+use ssz::Decode;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{named_params, Connection};
@@ -52,21 +52,21 @@ impl StreamStore {
         Ok(vec![])
     }
 
-    pub fn update_stream_ids(&self, connection: &Connection, stream_ids: &Vec<H256>) -> Result<()> {
+    pub fn update_stream_ids(&self, connection: &Connection, stream_ids: &[u8]) -> Result<()> {
         let mut stmt = connection.prepare(SqliteDBStatements::UPDATE_STREAM_IDS_STATEMENT)?;
         stmt.execute(named_params! {
-            ":stream_ids": stream_ids.as_ssz_bytes(),
+            ":stream_ids": stream_ids,
             ":id": 0,
         })?;
         Ok(())
     }
 
-    pub fn reset_stream_sync(&self, connection: &Connection, stream_ids: &Vec<H256>) -> Result<()> {
+    pub fn reset_stream_sync(&self, connection: &Connection, stream_ids: &[u8]) -> Result<()> {
         let mut stmt = connection.prepare(SqliteDBStatements::RESET_STERAM_SYNC_STATEMENT)?;
         stmt.execute(named_params! {
             ":data_sync_progress": 0,
             ":stream_replay_progress": 0,
-            ":stream_ids": stream_ids.as_ssz_bytes(),
+            ":stream_ids": stream_ids,
             ":id": 0,
         })?;
         Ok(())

@@ -5787,6 +5787,8 @@ dependencies = [
  "append_merkle",
  "async-trait",
  "contract-interface",
+ "eth2_ssz",
+ "eth2_ssz_derive",
  "ethereum-types 0.13.1",
  "ethers",
  "futures",
