@@ -21,6 +21,4 @@ members = [
 ]
 
 [patch.crates-io]
-discv5 = { path = "version-meld/discv5" }
 eth2_ssz = { path = "version-meld/eth2_ssz" }
-enr = { path = "version-meld/enr" }

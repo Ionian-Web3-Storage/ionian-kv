@@ -6964,11 +6964,3 @@ dependencies = [
  "cc",
  "libc",
 ]
-
-[[patch.unused]]
-name = "discv5"
-version = "0.1.0-beta.13"
-
-[[patch.unused]]
-name = "enr"
-version = "0.6.2"
