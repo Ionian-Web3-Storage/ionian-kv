@@ -1,0 +1,48 @@
+mod config_macro;
+
+mod convert;
+use config_macro::*;
+use std::ops::Deref;
+
+build_config! {
+    // stream
+    (stream_ids, (Vec<String>), vec![])
+
+    // log sync
+    (blockchain_rpc_endpoint, (String), "http://127.0.0.1:8545".to_string())
+    (log_contract_address, (String), "".to_string())
+    (log_sync_start_block_number, (u64), 0)
+
+    // rpc
+    (rpc_enabled, (bool), true)
+    (rpc_listen_address, (String), "127.0.0.1:5678".to_string())
+    (rpc_chunks_per_segment, (usize), 1024)
+    (ionian_node_url, (String), "http://127.0.0.1:5678".to_string())
+
+    // db
+    (db_dir, (String), "db".to_string())
+
+    // misc
+    (log_config_file, (String), "log_config".to_string())
+}
+
+#[derive(Debug)]
+pub struct IonianKVConfig {
+    pub raw_conf: RawConfiguration,
+}
+
+impl Deref for IonianKVConfig {
+    type Target = RawConfiguration;
+
+    fn deref(&self) -> &Self::Target {
+        &self.raw_conf
+    }
+}
+
+impl IonianKVConfig {
+    pub fn parse(matches: &clap::ArgMatches) -> Result<IonianKVConfig, String> {
+        Ok(IonianKVConfig {
+            raw_conf: RawConfiguration::parse(matches)?,
+        })
+    }
+}

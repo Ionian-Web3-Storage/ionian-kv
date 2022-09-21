@@ -1,0 +1,12 @@
+stream_ids = ["0x0","0x1","0x2"]
+
+db_dir = "db"
+
+rpc_enabled = true
+rpc_listen_address = "http://127.0.0.1:5678"
+ionian_node_url = ""
+
+log_config_file = "log_config"
+
+blockchain_rpc_endpoint = "http://127.0.0.1:8546"
+log_contract_address = "0xBbA3c74A006f199193645E35a936B75B605CB2BC"
