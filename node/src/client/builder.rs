@@ -49,10 +49,11 @@ impl ClientBuilder {
     }
 
     /// Initializes in-memory storage.
-    pub fn with_memory_store(mut self) -> Result<Self, String> {
+    pub async fn with_memory_store(mut self) -> Result<Self, String> {
         // TODO(zz): Set config.
         let store = Arc::new(RwLock::new(
             LogManager::memorydb(LogConfig::default())
+                .await
                 .map_err(|e| format!("Unable to start in-memory store: {:?}", e))?,
         ));
 
@@ -66,9 +67,10 @@ impl ClientBuilder {
     }
 
     /// Initializes RocksDB storage.
-    pub fn with_rocksdb_store(mut self, config: &StorageConfig) -> Result<Self, String> {
+    pub async fn with_rocksdb_store(mut self, config: &StorageConfig) -> Result<Self, String> {
         let store = Arc::new(RwLock::new(
             LogManager::connect_db(LogConfig::default(), &config.db_dir)
+                .await
                 .map_err(|e| format!("Unable to start RocksDB store: {:?}", e))?,
         ));
 

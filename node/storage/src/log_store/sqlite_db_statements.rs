@@ -1,3 +1,6 @@
+use super::stream_store::AccessControlOps;
+use const_format::formatcp;
+
 pub struct SqliteDBStatements;
 
 impl SqliteDBStatements {
@@ -19,13 +22,85 @@ impl SqliteDBStatements {
     pub const GET_STREAM_REPLAY_PROGRESS_STATEMENT: &'static str =
         "SELECT stream_replay_progress FROM t_misc WHERE id = 0";
 
-    pub const UPDATE_STREAM_REPLAY_PROGRESS_STATEMENT: &'static str =
-        "UPDATE t_misc SET stream_replay_progress = :stream_replay_progress WHERE id = :id AND stream_replay_progress = :from";
+    pub const UPDATE_STREAM_REPLAY_PROGRESS_STATEMENT: &'static str = "UPDATE t_misc SET stream_replay_progress = :stream_replay_progress WHERE id = :id AND stream_replay_progress = :from";
 
     pub const GET_STREAM_IDS_STATEMENT: &'static str = "SELECT stream_ids FROM t_misc WHERE id = 0";
 
     pub const UPDATE_STREAM_IDS_STATEMENT: &'static str =
         "UPDATE t_misc SET stream_ids = :stream_ids WHERE id = :id";
+
+    pub const GET_LATEST_VERSION_BEFORE_STATEMENT: &'static str =
+        "SELECT MAX(version) FROM t_stream WHERE stream_id = :stream_id AND key = :key AND version <= :before";
+
+    pub const IS_NEW_STREAM_STATEMENT: &'static str =
+        "SELECT COUNT(*) FROM t_access_control WHERE stream_id = :stream_id AND version <= :version";
+
+    pub const IS_SPECIAL_KEY_STATEMENT: &'static str = formatcp!(
+        "
+        SELECT op_type FROM
+            t_access_control 
+        WHERE 
+            stream_id = :stream_id AND key = :key AND 
+            version < :version AND op_type in ({}, {})
+        ORDER BY version DESC LIMIT 1",
+        AccessControlOps::SET_KEY_TO_SPECIAL,
+        AccessControlOps::SET_KEY_TO_NORMAL,
+    );
+
+    pub const IS_ADMIN_STATEMENT: &'static str = formatcp!(
+        "
+        SELECT op_type FROM 
+            t_access_control
+        WHERE
+            stream_id = :stream_id AND account = :account AND
+            version < :version AND op_type in ({}, {})
+        ORDER BY version DESC LIMIT 1",
+        AccessControlOps::GRANT_ADMIN_ROLE,
+        AccessControlOps::RENOUNCE_ADMIN_ROLE
+    );
+
+    pub const IS_WRITER_FOR_KEY_STATEMENT: &'static str = formatcp!(
+        "
+        SELECT op_type FROM 
+            t_access_control
+        WHERE
+            stream_id = :stream_id AND key = :key AND
+            account = :account AND version < :version AND
+            op_type in ({}, {}, {})
+        ORDER BY version DESC LIMIT 1
+    ",
+        AccessControlOps::GRANT_SPECIAL_WRITER_ROLE,
+        AccessControlOps::REVOKE_SPECIAL_WRITER_ROLE,
+        AccessControlOps::RENOUNCE_SPECIAL_WRITER_ROLE
+    );
+
+    pub const IS_WRITER_FOR_STREAM_STATEMENT: &'static str = formatcp!(
+        "
+        SELECT op_type FROM 
+            t_access_control
+        WHERE
+            stream_id = :stream_id AND account = :account AND 
+            version < :version AND op_type in ({}, {}, {})
+        ORDER BY version DESC LIMIT 1
+    ",
+        AccessControlOps::GRANT_WRITER_ROLE,
+        AccessControlOps::REVOKE_WRITER_ROLE,
+        AccessControlOps::RENOUNCE_WRITER_ROLE
+    );
+
+    pub const PUT_STREAM_WRITE_STATEMENT: &'static str = "
+        INSERT OR REPLACE INTO
+            t_stream (stream_id, key, version, start_index, end_index)
+        VALUES
+            (:stream_id, :key, :version, :start_index, :end_index)
+    ";
+
+    pub const PUT_ACCESS_CONTROL_STATEMENT: &'static str = "
+        INSERT OR REPLACE INTO
+            t_access_control (stream_id, key, version, account, op_type)
+        VALUES
+            (:stream_id, :key, :version, :account, :op_type)
+    ";
 
     pub const CREATE_MISC_TABLE_STATEMENT: &'static str = "
         CREATE TABLE IF NOT EXISTS t_misc (
@@ -55,10 +130,10 @@ impl SqliteDBStatements {
     pub const CREATE_ACCESS_CONTROL_TABLE_STATEMENT: &'static str = "
         CREATE TABLE IF NOT EXISTS t_access_control (
             stream_id BLOB NOT NULL,
-            key BLOB NOT NULL,
+            key BLOB,
             version INTEGER NOT NULL,
-            account BLOB NOT NULL,
-            op_type TEXT NOT NULL 
+            account BLOB,
+            op_type INTEGER NOT NULL
         )
     ";
 

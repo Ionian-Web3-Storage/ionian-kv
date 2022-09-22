@@ -213,6 +213,7 @@ fn submission_topic_to_stream_ids(topic: Vec<u8>) -> Vec<H256> {
 fn submission_event_to_transaction(e: SubmissionFilter) -> LogFetchProgress {
     LogFetchProgress::Transaction(Transaction {
         stream_ids: submission_topic_to_stream_ids(e.submission.1.to_vec()),
+        sender: e.sender,
         data: vec![],
         data_merkle_root: nodes_to_root(&e.submission.2),
         merkle_nodes: e

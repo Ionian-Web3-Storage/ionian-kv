@@ -971,6 +971,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "722e23542a15cea1f65d4a1419c4cfd7a26706c70871a13a04238ca3f40f1661"
 
 [[package]]
+name = "const_format"
+version = "0.2.26"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "939dc9e2eb9077e0679d2ce32de1ded8531779360b003b4a972a7a39ec263495"
+dependencies = [
+ "const_format_proc_macros",
+]
+
+[[package]]
+name = "const_format_proc_macros"
+version = "0.2.22"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ef196d5d972878a48da7decb7686eded338b4858fbabeed513d63a7c98b2b82d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "unicode-xid",
+]
+
+[[package]]
 name = "constant_time_eq"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5749,6 +5769,8 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "append_merkle",
+ "async-trait",
+ "const_format",
  "eth2_ssz",
  "eth2_ssz_derive",
  "ethereum-types 0.13.1",
@@ -5763,6 +5785,7 @@ dependencies = [
  "rusqlite",
  "shared_types",
  "tempdir",
+ "tokio-rusqlite",
  "tracing",
  "typenum",
 ]
@@ -6121,6 +6144,17 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn",
+]
+
+[[package]]
+name = "tokio-rusqlite"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a31dfc8c4778d61428ef6b5d0eba26a5953314f307f10fb278f9839d0a1baae5"
+dependencies = [
+ "crossbeam-channel",
+ "rusqlite",
+ "tokio",
 ]
 
 [[package]]

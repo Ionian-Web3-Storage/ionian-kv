@@ -23,20 +23,20 @@ impl StreamManager {
         store: Arc<RwLock<dyn Store>>,
         client: HttpClient,
     ) -> Result<(StreamDataFetcher, StreamReplayer)> {
-        let connection = store.read().await.get_stream_db_connection()?;
         // initialize
-        let holding_stream_ids = store.read().await.get_holding_stream_ids(&connection)?;
+        let holding_stream_ids = store.read().await.get_holding_stream_ids().await?;
         let holding_stream_set: HashSet<H256> =
             HashSet::from_iter(holding_stream_ids.iter().cloned());
         // ensure current stream id set is a subset of streams maintained in db
         let mut reseted = false;
         for id in config.stream_ids.iter() {
-            if holding_stream_set.get(id) == None {
+            if !holding_stream_set.contains(id) {
                 // new stream id, replay from start
                 store
                     .write()
                     .await
-                    .reset_stream_sync(&connection, &config.stream_ids.as_ssz_bytes())?;
+                    .reset_stream_sync(config.stream_ids.as_ssz_bytes())
+                    .await?;
                 reseted = true;
                 break;
             }
@@ -46,7 +46,8 @@ impl StreamManager {
             store
                 .write()
                 .await
-                .update_stream_ids(&connection, &config.stream_ids.as_ssz_bytes())?;
+                .update_stream_ids(config.stream_ids.as_ssz_bytes())
+                .await?;
         }
         // spawn data sync and stream replay threads
         let fetcher = StreamDataFetcher::new(config.clone(), store.clone(), client).await?;

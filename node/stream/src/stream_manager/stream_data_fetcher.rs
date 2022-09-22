@@ -69,6 +69,9 @@ impl StreamDataFetcher {
     }
 
     async fn sync_data(&self, tx: &Transaction) -> Result<()> {
+        if self.store.read().await.check_tx_completed(tx.seq)? {
+            return Ok(());
+        }
         for i in (0..tx.size).step_by(ENTRIES_PER_SEGMENT * MAX_DOWNLOAD_TASK) {
             let mut tasks = vec![];
             let tasks_end_index = cmp::min(
@@ -88,19 +91,13 @@ impl StreamDataFetcher {
     }
 
     pub async fn run(&self) {
-        let connection = match self.store.read().await.get_stream_db_connection() {
-            Ok(conn) => conn,
-            Err(e) => {
-                error!("build sqlite connection error: e={:?}", e);
-                return;
-            }
-        };
         let mut tx_seq;
         match self
             .store
             .read()
             .await
-            .get_stream_data_sync_progress(&connection)
+            .get_stream_data_sync_progress()
+            .await
         {
             Ok(progress) => {
                 tx_seq = progress;
@@ -119,7 +116,7 @@ impl StreamDataFetcher {
                         skip = true;
                     } else {
                         for id in tx.stream_ids.iter() {
-                            if self.config.stream_set.get(id) == None {
+                            if !self.config.stream_set.contains(id) {
                                 skip = true;
                                 break;
                             }
@@ -128,24 +125,26 @@ impl StreamDataFetcher {
                     // sync data
                     if !skip {
                         match self.sync_data(&tx).await {
-                            Ok(()) => {}
+                            Ok(()) => {
+                                // update progress, get next tx_seq to sync
+                                match self
+                                    .store
+                                    .write()
+                                    .await
+                                    .update_stream_data_sync_progress(tx_seq, tx_seq + 1)
+                                    .await
+                                {
+                                    Ok(next_tx_seq) => {
+                                        tx_seq = next_tx_seq;
+                                    }
+                                    Err(e) => {
+                                        error!("update stream data sync progress error: e={:?}", e);
+                                    }
+                                }
+                            }
                             Err(e) => {
                                 error!("update stream data sync progress error: e={:?}", e);
                             }
-                        }
-                    }
-                    // update progress, get next tx_seq to sync
-                    match self.store.write().await.update_stream_data_sync_progress(
-                        &connection,
-                        tx_seq,
-                        tx_seq + 1,
-                    ) {
-                        Ok(next_tx_seq) => {
-                            tx_seq = next_tx_seq;
-                        }
-                        Err(e) => {
-                            error!("update stream data sync progress error: e={:?}", e);
-                            break;
                         }
                     }
                 }

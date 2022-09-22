@@ -21,6 +21,9 @@ shared_types = { path = "../shared_types" }
 tracing = "0.1.35"
 typenum = "1.15.0"
 rusqlite = { version = "0.28.0", features = ["bundled"] }
+const_format = "0.2.26"
+tokio-rusqlite = "0.3.0"
+async-trait = "0.1.56"
 
 [dev-dependencies]
 tempdir = "0.3.7"

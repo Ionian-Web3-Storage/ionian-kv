@@ -1,6 +1,6 @@
-use ethereum_types::H256;
-use rusqlite::Connection;
-use shared_types::{Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot, Transaction};
+use async_trait::async_trait;
+use ethereum_types::{H160, H256};
+use shared_types::{Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot, Transaction, StreamWriteSet, AccessControlSet};
 
 use crate::error::Result;
 
@@ -11,6 +11,8 @@ mod stream_store;
 #[cfg(test)]
 mod tests;
 mod tx_store;
+
+pub use stream_store::AccessControlOps;
 
 /// The trait to read the transactions already appended to the log.
 ///
@@ -133,34 +135,45 @@ impl<
 {
 }
 
+#[async_trait]
 pub trait StreamRead {
-    fn get_stream_db_connection(&self) -> Result<Connection>;
+    async fn get_holding_stream_ids(&self) -> Result<Vec<H256>>;
 
-    fn get_holding_stream_ids(&self, connection: &Connection) -> Result<Vec<H256>>;
+    async fn get_stream_data_sync_progress(&self) -> Result<u64>;
 
-    fn get_stream_data_sync_progress(&self, connection: &Connection) -> Result<u64>;
+    async fn get_stream_replay_progress(&self) -> Result<u64>;
 
-    fn get_stream_replay_progress(&self, connection: &Connection) -> Result<u64>;
+    async fn get_latest_version_before(
+        &self,
+        stream_id: H256,
+        key: H256,
+        before: u64,
+    ) -> Result<u64>;
+
+    async fn has_write_permission(
+        &self,
+        account: H160,
+        stream_id: H256,
+        key: H256,
+        version: u64,
+    ) -> Result<bool>;
+
+    async fn is_new_stream(&self, stream_id: H256, version: u64) -> Result<bool>;
+
+    async fn is_admin(&self, account: H160, stream_id: H256, version: u64) -> Result<bool>;
 }
 
+#[async_trait]
 pub trait StreamWrite {
-    fn reset_stream_sync(&self, connection: &Connection, stream_ids: &[u8]) -> Result<()>;
+    async fn reset_stream_sync(&self, stream_ids: Vec<u8>) -> Result<()>;
 
-    fn update_stream_ids(&self, connection: &Connection, stream_ids: &[u8]) -> Result<()>;
+    async fn update_stream_ids(&self, stream_ids: Vec<u8>) -> Result<()>;
 
-    fn update_stream_data_sync_progress(
-        &self,
-        connection: &Connection,
-        from: u64,
-        progress: u64,
-    ) -> Result<u64>;
+    async fn update_stream_data_sync_progress(&self, from: u64, progress: u64) -> Result<u64>;
 
-    fn update_stream_replay_progress(
-        &self,
-        connection: &Connection,
-        from: u64,
-        progress: u64,
-    ) -> Result<u64>;
+    async fn update_stream_replay_progress(&self, from: u64, progress: u64) -> Result<u64>;
+    
+    async fn put_stream(&self, version: u64, stream_write_set: StreamWriteSet, access_control_set: AccessControlSet) -> Result<()>;
 }
 
 pub trait FlowRead {

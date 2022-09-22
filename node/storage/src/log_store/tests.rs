@@ -29,6 +29,7 @@ fn test_put_get() {
     let tx_merkle = sub_merkle_tree(&data).unwrap();
     let tx = Transaction {
         stream_ids: vec![],
+        sender: H160::new(),
         size: data_size as u64,
         data_merkle_root: tx_merkle.root().into(),
         seq: 0,
@@ -187,6 +188,7 @@ fn put_tx(store: &mut LogManager, chunk_count: usize, seq: u64, start_entry_inde
     let tx_merkle = sub_merkle_tree(&data).unwrap();
     let tx = Transaction {
         stream_ids: vec![],
+        sender: H160::new(),
         size: data_size as u64,
         data_merkle_root: tx_merkle.root().into(),
         seq,

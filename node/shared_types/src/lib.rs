@@ -1,6 +1,6 @@
 use anyhow::bail;
 use append_merkle::{Proof as RawProof, RangeProof as RawRangeProof};
-use ethereum_types::H256;
+use ethereum_types::{H160, H256};
 use merkle_light::merkle::next_pow2;
 use merkle_light::proof::Proof as RawFileProof;
 use merkle_tree::RawLeafSha3Algorithm;
@@ -37,6 +37,7 @@ pub struct Chunk(pub [u8; CHUNK_SIZE]);
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
     pub stream_ids: Vec<H256>,
+    pub sender: H160,
     /// In-place data.
     pub data: Vec<u8>,
     pub data_merkle_root: DataRoot,
@@ -207,6 +208,39 @@ impl FileProof {
         }
         Ok(proof_position)
     }
+}
+
+pub struct StreamRead {
+    pub stream_id: H256,
+    pub key: H256,
+}
+
+pub struct StreamReadSet {
+    pub stream_reads: Vec<StreamRead>,
+}
+
+pub struct StreamWrite {
+    pub stream_id: H256,
+    pub key: H256,
+    // start index in bytes
+    pub start_index: u64,
+    // end index in bytes
+    pub end_index: u64,
+}
+
+pub struct StreamWriteSet {
+    pub stream_writes: Vec<StreamWrite>,
+}
+
+pub struct AccessControlSet {
+    pub access_controls: Vec<AccessControl>,
+}
+
+pub struct AccessControl {
+    pub op_type: u8,
+    pub stream_id: H256,
+    pub key: H256,
+    pub account: H160,
 }
 
 impl TryFrom<&FileProof> for RawFileProof<[u8; 32]> {

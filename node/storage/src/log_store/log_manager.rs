@@ -7,16 +7,16 @@ use crate::log_store::{
 use crate::{try_option, IonianKeyValueDB};
 use anyhow::{anyhow, bail, Result};
 use append_merkle::{Algorithm, AppendMerkleTree, Sha3Algorithm};
-use ethereum_types::H256;
+use async_trait::async_trait;
+use ethereum_types::{H160, H256};
 use kvdb_rocksdb::{Database, DatabaseConfig};
 use merkle_light::merkle::{log2_pow2, MerkleTree};
 use merkle_tree::RawLeafSha3Algorithm;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::ParallelSlice;
-use rusqlite::Connection;
 use shared_types::{
     bytes_to_chunks, Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot, FlowProof,
-    FlowRangeProof, Transaction,
+    FlowRangeProof, Transaction, StreamWriteSet, AccessControlSet,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -291,89 +291,111 @@ impl Configurable for LogManager {
     }
 }
 
+#[async_trait]
 impl StreamRead for LogManager {
-    fn get_stream_db_connection(&self) -> Result<rusqlite::Connection> {
-        self.stream_store.get_connection()
+    async fn get_holding_stream_ids(&self) -> crate::error::Result<Vec<H256>> {
+        self.stream_store.get_stream_ids().await
     }
 
-    fn get_holding_stream_ids(
+    async fn get_stream_data_sync_progress(&self) -> Result<u64> {
+        self.stream_store.get_stream_data_sync_progress().await
+    }
+
+    async fn get_stream_replay_progress(&self) -> Result<u64> {
+        self.stream_store.get_stream_replay_progress().await
+    }
+
+    async fn get_latest_version_before(
         &self,
-        connection: &rusqlite::Connection,
-    ) -> crate::error::Result<Vec<H256>> {
-        self.stream_store.get_stream_ids(connection)
+        stream_id: H256,
+        key: H256,
+        before: u64,
+    ) -> Result<u64> {
+        self.stream_store
+            .get_latest_version_before(stream_id, key, before)
+            .await
     }
 
-    fn get_stream_data_sync_progress(&self, connection: &Connection) -> Result<u64> {
-        self.stream_store.get_stream_data_sync_progress(connection)
+    async fn has_write_permission(
+        &self,
+        account: H160,
+        stream_id: H256,
+        key: H256,
+        version: u64,
+    ) -> Result<bool> {
+        self.stream_store
+            .has_write_permission(account, stream_id, key, version)
+            .await
     }
 
-    fn get_stream_replay_progress(&self, connection: &Connection) -> Result<u64> {
-        self.stream_store.get_stream_replay_progress(connection)
+    async fn is_new_stream(&self, stream_id: H256, version: u64) -> Result<bool> {
+        self.stream_store.is_new_stream(stream_id, version).await
+    }
+
+    async fn is_admin(&self, account: H160, stream_id: H256, version: u64) -> Result<bool> {
+        self.stream_store
+            .is_admin(account, stream_id, version)
+            .await
     }
 }
 
+#[async_trait]
 impl StreamWrite for LogManager {
-    fn reset_stream_sync(&self, connection: &Connection, stream_ids: &[u8]) -> Result<()> {
-        self.stream_store.reset_stream_sync(connection, stream_ids)
+    async fn reset_stream_sync(&self, stream_ids: Vec<u8>) -> Result<()> {
+        self.stream_store.reset_stream_sync(stream_ids).await
     }
 
-    fn update_stream_ids(&self, connection: &Connection, stream_ids: &[u8]) -> Result<()> {
-        self.stream_store.update_stream_ids(connection, stream_ids)
+    async fn update_stream_ids(&self, stream_ids: Vec<u8>) -> Result<()> {
+        self.stream_store.update_stream_ids(stream_ids).await
     }
 
     // update the progress and return the next tx_seq to sync
-    fn update_stream_data_sync_progress(
-        &self,
-        connection: &Connection,
-        from: u64,
-        progress: u64,
-    ) -> Result<u64> {
+    async fn update_stream_data_sync_progress(&self, from: u64, progress: u64) -> Result<u64> {
         if self
             .stream_store
-            .update_stream_data_sync_progress(connection, from, progress)?
+            .update_stream_data_sync_progress(from, progress)
+            .await?
             > 0
         {
             Ok(progress + 1)
         } else {
-            Ok(self
-                .stream_store
-                .get_stream_data_sync_progress(connection)?)
+            Ok(self.stream_store.get_stream_data_sync_progress().await? + 1)
         }
     }
 
     // update the progress and return the next tx_seq to replay
-    fn update_stream_replay_progress(
-        &self,
-        connection: &Connection,
-        from: u64,
-        progress: u64,
-    ) -> Result<u64> {
+    async fn update_stream_replay_progress(&self, from: u64, progress: u64) -> Result<u64> {
         if self
             .stream_store
-            .update_stream_replay_progress(connection, from, progress)?
+            .update_stream_replay_progress(from, progress)
+            .await?
             > 0
         {
             Ok(progress + 1)
         } else {
-            Ok(self.stream_store.get_stream_replay_progress(connection)?)
+            Ok(self.stream_store.get_stream_replay_progress().await? + 1)
         }
+    }
+    
+    async fn put_stream(&self, version: u64, stream_write_set: StreamWriteSet, access_control_set: AccessControlSet) -> Result<()>{
+        self.stream_store.put_stream(version, stream_write_set, access_control_set).await
     }
 }
 
 impl LogManager {
-    pub fn memorydb(config: LogConfig) -> Result<Self> {
+    pub async fn memorydb(config: LogConfig) -> Result<Self> {
         let memory_db = Arc::new(kvdb_memorydb::create(COL_NUM));
-        let stream_store = StreamStore::new_in_memory();
-        stream_store.create_tables_if_not_exist()?;
+        let stream_store = StreamStore::new_in_memory().await?;
+        stream_store.create_tables_if_not_exist().await?;
         Self::new(memory_db, stream_store, config)
     }
 
-    pub fn connect_db(config: LogConfig, path: impl AsRef<Path>) -> Result<Self> {
+    pub async fn connect_db(config: LogConfig, path: impl AsRef<Path>) -> Result<Self> {
         let mut rocksdb_config = DatabaseConfig::with_columns(COL_NUM);
         rocksdb_config.enable_statistics = true;
         let rocksdb = Arc::new(Database::open(&rocksdb_config, path.as_ref())?);
-        let stream_store = StreamStore::new(path.as_ref());
-        stream_store.create_tables_if_not_exist()?;
+        let stream_store = StreamStore::new(path.as_ref()).await?;
+        stream_store.create_tables_if_not_exist().await?;
         Self::new(rocksdb, stream_store, config)
     }
 
