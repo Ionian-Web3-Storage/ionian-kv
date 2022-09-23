@@ -314,24 +314,24 @@ impl StreamReplayer {
                 .store
                 .read()
                 .await
-                .is_new_stream(id.clone(), version)
+                .is_new_stream(*id, version)
                 .await?
             {
                 with_prefix_grant_admin_role.push(AccessControl {
                     op_type: AccessControlOps::GRANT_ADMIN_ROLE,
-                    stream_id: id.clone(),
+                    stream_id: *id,
                     key: H256::zero(),
                     account: tx.sender,
                 });
-                is_admin.insert(id.clone());
+                is_admin.insert(*id);
             } else if self
                 .store
                 .read()
                 .await
-                .is_admin(tx.sender, id.clone(), version)
+                .is_admin(tx.sender, *id, version)
                 .await?
             {
-                is_admin.insert(id.clone());
+                is_admin.insert(*id);
             }
         }
         with_prefix_grant_admin_role.append(&mut access_control_set.access_controls);

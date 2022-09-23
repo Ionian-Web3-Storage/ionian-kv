@@ -193,7 +193,7 @@ impl StreamStore {
                     if num > 0 {
                         return Ok(false);
                     }
-                    return Ok(true);
+                    Ok(true)
                 } else {
                     bail!("unexpected empty rows");
                 }
@@ -222,7 +222,7 @@ impl StreamStore {
                         }
                     }
                 } else {
-                    return Ok(false);
+                    Ok(false)
                 }
             })
             .await
@@ -245,7 +245,7 @@ impl StreamStore {
                     if num > 0 {
                         return Ok(false);
                     }
-                    return Ok(true);
+                    Ok(true)
                 } else {
                     bail!("unexpected empty rows");
                 }
@@ -411,7 +411,7 @@ impl StreamStore {
                 if let Some(raw_data) = rows.next() {
                     return Ok(Some(raw_data?));
                 }
-                return Ok(None);
+                Ok(None)
             })
             .await
     }

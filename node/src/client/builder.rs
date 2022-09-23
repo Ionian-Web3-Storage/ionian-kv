@@ -55,7 +55,7 @@ impl ClientBuilder {
                 .map_err(|e| format!("Unable to start in-memory store: {:?}", e))?,
         ));
 
-        self.store = Some(store.clone());
+        self.store = Some(store);
 
         Ok(self)
     }
@@ -68,7 +68,7 @@ impl ClientBuilder {
                 .map_err(|e| format!("Unable to start RocksDB store: {:?}", e))?,
         ));
 
-        self.store = Some(store.clone());
+        self.store = Some(store);
 
         Ok(self)
     }
@@ -84,7 +84,7 @@ impl ClientBuilder {
         let ctx = rpc::Context {
             config: rpc_config,
             shutdown_sender: executor.shutdown_sender(),
-            store: store,
+            store,
         };
 
         self.ionian_client = Some(
