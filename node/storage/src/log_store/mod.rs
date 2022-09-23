@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use ethereum_types::{H160, H256};
-use shared_types::{Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot, Transaction, StreamWriteSet, AccessControlSet};
+use shared_types::{
+    AccessControlSet, Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot,
+    StreamWriteSet, Transaction,
+};
 
 use crate::error::Result;
 
@@ -161,6 +164,13 @@ pub trait StreamRead {
     async fn is_new_stream(&self, stream_id: H256, version: u64) -> Result<bool>;
 
     async fn is_admin(&self, account: H160, stream_id: H256, version: u64) -> Result<bool>;
+
+    async fn get_stream_key_value(
+        &self,
+        stream_id: H256,
+        key: H256,
+        version: u64,
+    ) -> Result<Option<(shared_types::StreamWrite, u64)>>;
 }
 
 #[async_trait]
@@ -172,8 +182,13 @@ pub trait StreamWrite {
     async fn update_stream_data_sync_progress(&self, from: u64, progress: u64) -> Result<u64>;
 
     async fn update_stream_replay_progress(&self, from: u64, progress: u64) -> Result<u64>;
-    
-    async fn put_stream(&self, version: u64, stream_write_set: StreamWriteSet, access_control_set: AccessControlSet) -> Result<()>;
+
+    async fn put_stream(
+        &self,
+        version: u64,
+        stream_write_set: StreamWriteSet,
+        access_control_set: AccessControlSet,
+    ) -> Result<()>;
 }
 
 pub trait FlowRead {

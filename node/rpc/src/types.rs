@@ -141,6 +141,20 @@ impl SegmentWithProof {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ValueSegment {
+    // key version
+    pub version: u64,
+    // data
+    #[serde(with = "base64")]
+    pub data: Vec<u8>,
+    // start index
+    pub start_index: u64,
+    // value total size
+    pub size: u64,
+}
+
 mod base64 {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

@@ -14,7 +14,10 @@ use jsonrpsee::http_client::HttpClientBuilder;
 use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle};
 use kv_rpc_server::KeyValueRpcServer;
 use std::error::Error;
+use std::sync::Arc;
+use storage::log_store::Store;
 use task_executor::ShutdownReason;
+use tokio::sync::RwLock;
 
 pub use config::Config as RPCConfig;
 
@@ -25,6 +28,7 @@ pub use config::Config as RPCConfig;
 pub struct Context {
     pub config: RPCConfig,
     pub shutdown_sender: Sender<ShutdownReason>,
+    pub store: Arc<RwLock<dyn Store>>,
 }
 
 pub fn ionian_client(ctx: &Context) -> Result<HttpClient, Box<dyn Error>> {
@@ -36,7 +40,7 @@ pub async fn run_server(ctx: Context) -> Result<HttpServerHandle, Box<dyn Error>
         .build(ctx.config.listen_address)
         .await?;
 
-    let kv = (kv_rpc_server::KeyValueRpcServerImpl).into_rpc();
+    let kv = (kv_rpc_server::KeyValueRpcServerImpl { ctx: ctx.clone() }).into_rpc();
 
     let addr = server.local_addr()?;
     let handle = server.start(kv)?;

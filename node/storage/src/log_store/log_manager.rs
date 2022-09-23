@@ -15,8 +15,8 @@ use merkle_tree::RawLeafSha3Algorithm;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::ParallelSlice;
 use shared_types::{
-    bytes_to_chunks, Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot, FlowProof,
-    FlowRangeProof, Transaction, StreamWriteSet, AccessControlSet,
+    bytes_to_chunks, AccessControlSet, Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof,
+    DataRoot, FlowProof, FlowRangeProof, StreamWriteSet, Transaction,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -337,6 +337,17 @@ impl StreamRead for LogManager {
             .is_admin(account, stream_id, version)
             .await
     }
+
+    async fn get_stream_key_value(
+        &self,
+        stream_id: H256,
+        key: H256,
+        version: u64,
+    ) -> Result<Option<(shared_types::StreamWrite, u64)>> {
+        self.stream_store
+            .get_stream_key_value(stream_id, key, version)
+            .await
+    }
 }
 
 #[async_trait]
@@ -376,9 +387,16 @@ impl StreamWrite for LogManager {
             Ok(self.stream_store.get_stream_replay_progress().await? + 1)
         }
     }
-    
-    async fn put_stream(&self, version: u64, stream_write_set: StreamWriteSet, access_control_set: AccessControlSet) -> Result<()>{
-        self.stream_store.put_stream(version, stream_write_set, access_control_set).await
+
+    async fn put_stream(
+        &self,
+        version: u64,
+        stream_write_set: StreamWriteSet,
+        access_control_set: AccessControlSet,
+    ) -> Result<()> {
+        self.stream_store
+            .put_stream(version, stream_write_set, access_control_set)
+            .await
     }
 }
 

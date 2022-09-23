@@ -1,11 +1,79 @@
+use crate::error;
+use crate::types::ValueSegment;
+use crate::Context;
+use storage::log_store::log_manager::ENTRY_SIZE;
+
 use super::api::KeyValueRpcServer;
+use ethereum_types::H256;
 use jsonrpsee::core::async_trait;
 use jsonrpsee::core::RpcResult;
-pub struct KeyValueRpcServerImpl;
+pub struct KeyValueRpcServerImpl {
+    pub ctx: Context,
+}
 
 #[async_trait]
 impl KeyValueRpcServer for KeyValueRpcServerImpl {
-    async fn foo(&self) -> RpcResult<u32> {
-        Ok(0)
+    async fn get_key(
+        &self,
+        stream_id: H256,
+        key: H256,
+        start_index: u64,
+        len: u64,
+        version: Option<u64>,
+    ) -> RpcResult<Option<ValueSegment>> {
+        debug!("kv_getKey()");
+
+        if len > self.ctx.config.max_query_len_in_bytes {
+            return Err(error::invalid_params("len", "query length too large"));
+        }
+
+        let before_version = match version {
+            Some(v) => v,
+            None => u64::MAX,
+        };
+
+        if let Some((stream_write, latest_version)) = self
+            .ctx
+            .store
+            .read()
+            .await
+            .get_stream_key_value(stream_id, key, before_version)
+            .await?
+        {
+            if start_index > stream_write.end_index - stream_write.start_index {
+                return Err(error::invalid_params(
+                    "start_index",
+                    "start index is greater than value length",
+                ));
+            }
+            let start_byte_index = stream_write.start_index + start_index;
+            let end_byte_index = std::cmp::min(start_byte_index + len, stream_write.end_index);
+            let start_entry_index = start_byte_index / ENTRY_SIZE as u64;
+            let end_entry_index = if end_byte_index % ENTRY_SIZE as u64 == 0 {
+                end_byte_index / ENTRY_SIZE as u64
+            } else {
+                end_byte_index / ENTRY_SIZE as u64 + 1
+            };
+            if let Some(entry_array) =
+                self.ctx.store.read().await.get_chunk_by_flow_index(
+                    start_entry_index,
+                    end_entry_index - start_entry_index,
+                )?
+            {
+                return Ok(Some(ValueSegment {
+                    version: latest_version,
+                    data: entry_array.data[(start_byte_index as usize
+                        - start_entry_index as usize * ENTRY_SIZE)
+                        ..(end_byte_index as usize - start_entry_index as usize * ENTRY_SIZE)
+                            as usize]
+                        .to_vec(),
+                    start_index,
+                    size: stream_write.end_index - stream_write.start_index,
+                }));
+            }
+            Ok(None)
+        } else {
+            Ok(None)
+        }
     }
 }

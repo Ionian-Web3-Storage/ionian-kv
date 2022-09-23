@@ -27,7 +27,6 @@ macro_rules! require {
 pub struct ClientBuilder {
     runtime_context: Option<RuntimeContext>,
     store: Option<Arc<RwLock<dyn Store>>>,
-    async_store: Option<storage_async::Store>,
     ionian_client: Option<HttpClient>,
 }
 
@@ -37,7 +36,6 @@ impl ClientBuilder {
         Self {
             runtime_context: None,
             store: None,
-            async_store: None,
             ionian_client: None,
         }
     }
@@ -59,10 +57,6 @@ impl ClientBuilder {
 
         self.store = Some(store.clone());
 
-        if let Some(ctx) = self.runtime_context.as_ref() {
-            self.async_store = Some(storage_async::Store::new(store, ctx.executor.clone()));
-        }
-
         Ok(self)
     }
 
@@ -76,10 +70,6 @@ impl ClientBuilder {
 
         self.store = Some(store.clone());
 
-        if let Some(ctx) = self.runtime_context.as_ref() {
-            self.async_store = Some(storage_async::Store::new(store, ctx.executor.clone()));
-        }
-
         Ok(self)
     }
 
@@ -89,10 +79,12 @@ impl ClientBuilder {
         }
 
         let executor = require!("rpc", self, runtime_context).clone().executor;
+        let store = require!("stream", self, store).clone();
 
         let ctx = rpc::Context {
             config: rpc_config,
             shutdown_sender: executor.shutdown_sender(),
+            store: store,
         };
 
         self.ionian_client = Some(

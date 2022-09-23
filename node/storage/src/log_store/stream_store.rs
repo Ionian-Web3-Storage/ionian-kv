@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use ethereum_types::{H160, H256};
-use shared_types::{StreamWriteSet, AccessControlSet};
+use shared_types::{AccessControlSet, StreamWrite, StreamWriteSet};
 use ssz::{Decode, Encode};
 use std::path::Path;
 
@@ -342,30 +342,78 @@ impl StreamStore {
         }
     }
 
-    pub async fn put_stream(&self, version: u64, stream_write_set: StreamWriteSet, access_control_set: AccessControlSet) -> Result<()>{
-        self.connection.call(move |conn| {
-            let tx = conn.transaction()?;
-            for stream_write in stream_write_set.stream_writes.iter() {
-                tx.execute(SqliteDBStatements::PUT_STREAM_WRITE_STATEMENT, named_params! {
-                    ":stream_id": stream_write.stream_id.as_ssz_bytes(),
-                    ":key": stream_write.key.as_ssz_bytes(),
-                    ":version": version,
-                    ":start_index": stream_write.start_index,
-                    ":end_index": stream_write.end_index
-                })?;
-            }
-            for access_control in access_control_set.access_controls.iter() {
-                tx.execute(SqliteDBStatements::PUT_ACCESS_CONTROL_STATEMENT, named_params! {
-                    ":stream_id": access_control.stream_id.as_ssz_bytes(),
-                    ":key": access_control.key.as_ssz_bytes(),
-                    ":version": version,
-                    ":account": access_control.account.as_ssz_bytes(),
-                    ":op_type": access_control.op_type,
-                })?;
-            }
-            tx.commit()?;
-            Ok(())
-        }).await
+    pub async fn put_stream(
+        &self,
+        version: u64,
+        stream_write_set: StreamWriteSet,
+        access_control_set: AccessControlSet,
+    ) -> Result<()> {
+        self.connection
+            .call(move |conn| {
+                let tx = conn.transaction()?;
+                for stream_write in stream_write_set.stream_writes.iter() {
+                    tx.execute(
+                        SqliteDBStatements::PUT_STREAM_WRITE_STATEMENT,
+                        named_params! {
+                            ":stream_id": stream_write.stream_id.as_ssz_bytes(),
+                            ":key": stream_write.key.as_ssz_bytes(),
+                            ":version": version,
+                            ":start_index": stream_write.start_index,
+                            ":end_index": stream_write.end_index
+                        },
+                    )?;
+                }
+                for access_control in access_control_set.access_controls.iter() {
+                    tx.execute(
+                        SqliteDBStatements::PUT_ACCESS_CONTROL_STATEMENT,
+                        named_params! {
+                            ":stream_id": access_control.stream_id.as_ssz_bytes(),
+                            ":key": access_control.key.as_ssz_bytes(),
+                            ":version": version,
+                            ":account": access_control.account.as_ssz_bytes(),
+                            ":op_type": access_control.op_type,
+                        },
+                    )?;
+                }
+                tx.commit()?;
+                Ok(())
+            })
+            .await
+    }
+
+    pub async fn get_stream_key_value(
+        &self,
+        stream_id: H256,
+        key: H256,
+        version: u64,
+    ) -> Result<Option<(StreamWrite, u64)>> {
+        self.connection
+            .call(move |conn| {
+                let mut stmt = conn.prepare(SqliteDBStatements::GET_STREAM_KEY_VALUE_STATEMENT)?;
+                let mut rows = stmt.query_map(
+                    named_params! {
+                        ":stream_id": stream_id.as_ssz_bytes(),
+                        ":key": key.as_ssz_bytes(),
+                        ":version": version,
+                    },
+                    |row| {
+                        Ok((
+                            StreamWrite {
+                                stream_id,
+                                key,
+                                start_index: row.get(1)?,
+                                end_index: row.get(2)?,
+                            },
+                            row.get(0)?,
+                        ))
+                    },
+                )?;
+                if let Some(raw_data) = rows.next() {
+                    return Ok(Some(raw_data?));
+                }
+                return Ok(None);
+            })
+            .await
     }
 }
 

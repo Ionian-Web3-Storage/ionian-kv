@@ -396,7 +396,11 @@ impl StreamReplayer {
             return Ok(false);
         }
         // update database
-        self.store.write().await.put_stream(tx.seq, stream_write_set, access_control_set).await?;
+        self.store
+            .write()
+            .await
+            .put_stream(tx.seq, stream_write_set, access_control_set)
+            .await?;
         Ok(true)
     }
 

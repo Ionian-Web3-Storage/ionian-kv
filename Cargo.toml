@@ -17,7 +17,6 @@ members = [
     "node/rpc",
     "node/shared_types",
     "node/storage",
-    "node/storage-async",
 ]
 
 [patch.crates-io]

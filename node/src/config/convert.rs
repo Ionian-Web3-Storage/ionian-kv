@@ -46,6 +46,7 @@ impl IonianKVConfig {
             listen_address,
             chunks_per_segment: self.rpc_chunks_per_segment,
             ionian_node_url: self.ionian_node_url.clone(),
+            max_query_len_in_bytes: self.max_query_len_in_bytes,
         })
     }
 

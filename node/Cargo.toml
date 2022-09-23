@@ -16,7 +16,6 @@ log_entry_sync = { path = "./log_entry_sync" }
 rpc = { path = "./rpc" }
 shared_types = { path = "./shared_types" }
 storage = { path = "./storage" }
-storage-async = { path = "./storage-async" }
 stream = { path = "./stream" }
 task_executor = { path = "../common/task_executor" }
 tokio = { version = "1.19.2", features = ["full"] }

@@ -2737,7 +2737,6 @@ dependencies = [
  "rpc",
  "shared_types",
  "storage",
- "storage-async",
  "stream",
  "task_executor",
  "tokio",
@@ -5179,6 +5178,7 @@ version = "0.1.0"
 dependencies = [
  "append_merkle",
  "base64 0.13.0",
+ "ethereum-types 0.13.1",
  "futures",
  "futures-channel",
  "jsonrpsee",
@@ -5187,6 +5187,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shared_types",
+ "storage",
  "task_executor",
  "tokio",
  "tracing",
@@ -5788,18 +5789,6 @@ dependencies = [
  "tokio-rusqlite",
  "tracing",
  "typenum",
-]
-
-[[package]]
-name = "storage-async"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "shared_types",
- "storage",
- "task_executor",
- "tokio",
- "tracing",
 ]
 
 [[package]]
