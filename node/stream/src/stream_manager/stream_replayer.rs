@@ -430,7 +430,7 @@ impl StreamReplayer {
                             }
                         }
                     }
-                    // sync data
+                    // replay data
                     if !skip {
                         match self.replay(&tx).await {
                             Ok(true) => {
@@ -439,7 +439,7 @@ impl StreamReplayer {
                                     .store
                                     .write()
                                     .await
-                                    .update_stream_data_sync_progress(tx_seq, tx_seq + 1)
+                                    .update_stream_replay_progress(tx_seq, tx_seq + 1)
                                     .await
                                 {
                                     Ok(next_tx_seq) => {
