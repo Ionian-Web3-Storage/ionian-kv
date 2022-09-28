@@ -3,9 +3,9 @@ use log_entry_sync::{LogSyncConfig, LogSyncManager};
 use rpc::HttpClient;
 use rpc::RPCConfig;
 use std::sync::Arc;
-use storage::log_store::log_manager::LogConfig;
-use storage::log_store::Store;
-use storage::{LogManager, StorageConfig};
+use storage_with_stream::log_store::log_manager::LogConfig;
+use storage_with_stream::Store;
+use storage_with_stream::{StorageConfig, StoreManager};
 use stream::{StreamConfig, StreamManager};
 use tokio::sync::RwLock;
 
@@ -50,7 +50,7 @@ impl ClientBuilder {
     pub async fn with_memory_store(mut self) -> Result<Self, String> {
         // TODO(zz): Set config.
         let store = Arc::new(RwLock::new(
-            LogManager::memorydb(LogConfig::default())
+            StoreManager::memorydb(LogConfig::default())
                 .await
                 .map_err(|e| format!("Unable to start in-memory store: {:?}", e))?,
         ));
@@ -63,9 +63,13 @@ impl ClientBuilder {
     /// Initializes RocksDB storage.
     pub async fn with_rocksdb_store(mut self, config: &StorageConfig) -> Result<Self, String> {
         let store = Arc::new(RwLock::new(
-            LogManager::connect_db(LogConfig::default(), &config.db_dir, &config.kv_db_file)
-                .await
-                .map_err(|e| format!("Unable to start RocksDB store: {:?}", e))?,
+            StoreManager::rocks_db(
+                LogConfig::default(),
+                &config.log_config.db_dir,
+                &config.kv_db_file,
+            )
+            .await
+            .map_err(|e| format!("Unable to start RocksDB store: {:?}", e))?,
         ));
 
         self.store = Some(store);

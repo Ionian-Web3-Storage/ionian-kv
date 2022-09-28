@@ -15,7 +15,7 @@ ionian_kv_version = { path = "../common/ionian_kv_version" }
 log_entry_sync = { path = "./log_entry_sync" }
 rpc = { path = "./rpc" }
 shared_types = { path = "./shared_types" }
-storage = { path = "./storage" }
+storage_with_stream = { path = "./storage_with_stream" }
 stream = { path = "./stream" }
 task_executor = { path = "../common/task_executor" }
 tokio = { version = "1.19.2", features = ["full"] }

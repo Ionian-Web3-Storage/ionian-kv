@@ -1,7 +1,7 @@
 use crate::error;
 use crate::types::ValueSegment;
 use crate::Context;
-use storage::log_store::log_manager::ENTRY_SIZE;
+use storage_with_stream::log_store::log_manager::ENTRY_SIZE;
 
 use super::api::KeyValueRpcServer;
 use ethereum_types::H256;

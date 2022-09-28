@@ -1,21 +1,16 @@
-use async_trait::async_trait;
-use ethereum_types::{H160, H256};
+use ethereum_types::H256;
 use shared_types::{
-    AccessControlSet, Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot,
-    StreamWriteSet, Transaction,
+    Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot, FlowRangeProof, Transaction,
 };
 
 use crate::error::Result;
 
 mod flow_store;
+mod load_chunk;
 pub mod log_manager;
-mod sqlite_db_statements;
-mod stream_store;
 #[cfg(test)]
 mod tests;
 mod tx_store;
-
-pub use stream_store::AccessControlOps;
 
 /// The trait to read the transactions already appended to the log.
 ///
@@ -48,6 +43,11 @@ pub trait LogStoreRead: LogStoreChunkRead {
     fn get_sync_progress(&self) -> Result<Option<(u64, H256)>>;
 
     fn validate_range_proof(&self, tx_seq: u64, data: &ChunkArrayWithProof) -> Result<bool>;
+
+    fn get_proof_for_flow_index_range(&self, index: u64, length: u64) -> Result<FlowRangeProof>;
+
+    /// Return flow root and length.
+    fn get_context(&self) -> Result<(DataRoot, u64)>;
 }
 
 pub trait LogStoreChunkRead {
@@ -92,7 +92,7 @@ pub trait LogStoreWrite: LogStoreChunkWrite {
     ///
     /// This will return error if not all chunks are stored. But since this check can be expensive,
     /// the caller is supposed to track chunk statuses and call this after storing all the chunks.
-    fn finalize_tx(&self, tx_seq: u64) -> Result<()>;
+    fn finalize_tx(&mut self, tx_seq: u64) -> Result<()>;
 
     /// Store the progress of synced block number and its hash.
     fn put_sync_progress(&self, progress: (u64, H256)) -> Result<()>;
@@ -121,75 +121,8 @@ pub trait Configurable {
 pub trait LogChunkStore: LogStoreChunkRead + LogStoreChunkWrite + Send + Sync + 'static {}
 impl<T: LogStoreChunkRead + LogStoreChunkWrite + Send + Sync + 'static> LogChunkStore for T {}
 
-pub trait Store:
-    LogStoreRead + LogStoreWrite + Configurable + Send + Sync + StreamRead + StreamWrite + 'static
-{
-}
-impl<
-        T: LogStoreRead
-            + LogStoreWrite
-            + Configurable
-            + Send
-            + Sync
-            + StreamRead
-            + StreamWrite
-            + 'static,
-    > Store for T
-{
-}
-
-#[async_trait]
-pub trait StreamRead {
-    async fn get_holding_stream_ids(&self) -> Result<Vec<H256>>;
-
-    async fn get_stream_data_sync_progress(&self) -> Result<u64>;
-
-    async fn get_stream_replay_progress(&self) -> Result<u64>;
-
-    async fn get_latest_version_before(
-        &self,
-        stream_id: H256,
-        key: H256,
-        before: u64,
-    ) -> Result<u64>;
-
-    async fn has_write_permission(
-        &self,
-        account: H160,
-        stream_id: H256,
-        key: H256,
-        version: u64,
-    ) -> Result<bool>;
-
-    async fn is_new_stream(&self, stream_id: H256, version: u64) -> Result<bool>;
-
-    async fn is_admin(&self, account: H160, stream_id: H256, version: u64) -> Result<bool>;
-
-    async fn get_stream_key_value(
-        &self,
-        stream_id: H256,
-        key: H256,
-        version: u64,
-    ) -> Result<Option<(shared_types::StreamWrite, u64)>>;
-}
-
-#[async_trait]
-pub trait StreamWrite {
-    async fn reset_stream_sync(&self, stream_ids: Vec<u8>) -> Result<()>;
-
-    async fn update_stream_ids(&self, stream_ids: Vec<u8>) -> Result<()>;
-
-    async fn update_stream_data_sync_progress(&self, from: u64, progress: u64) -> Result<u64>;
-
-    async fn update_stream_replay_progress(&self, from: u64, progress: u64) -> Result<u64>;
-
-    async fn put_stream(
-        &self,
-        version: u64,
-        stream_write_set: StreamWriteSet,
-        access_control_set: AccessControlSet,
-    ) -> Result<()>;
-}
+pub trait Store: LogStoreRead + LogStoreWrite + Configurable + Send + Sync + 'static {}
+impl<T: LogStoreRead + LogStoreWrite + Configurable + Send + Sync + 'static> Store for T {}
 
 pub trait FlowRead {
     fn get_entries(&self, index_start: u64, index_end: u64) -> Result<Option<ChunkArray>>;

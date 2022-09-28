@@ -10,7 +10,7 @@ use std::fmt::Debug;
 use std::future::Future;
 use std::sync::Arc;
 use std::time::Duration;
-use storage::log_store::Store;
+use storage_with_stream::Store;
 use task_executor::{ShutdownReason, TaskExecutor};
 use tokio::sync::mpsc::UnboundedReceiver;
 use tokio::sync::RwLock;

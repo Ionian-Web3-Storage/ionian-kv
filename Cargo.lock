@@ -128,8 +128,10 @@ dependencies = [
  "eth2_ssz",
  "eth2_ssz_derive",
  "ethereum-types 0.13.1",
+ "lazy_static",
  "serde",
  "tiny-keccak",
+ "tracing",
 ]
 
 [[package]]
@@ -2736,7 +2738,7 @@ dependencies = [
  "log_entry_sync",
  "rpc",
  "shared_types",
- "storage",
+ "storage_with_stream",
  "stream",
  "task_executor",
  "tokio",
@@ -3800,7 +3802,7 @@ dependencies = [
  "jsonrpsee",
  "serde_json",
  "shared_types",
- "storage",
+ "storage_with_stream",
  "task_executor",
  "tokio",
 ]
@@ -5187,7 +5189,7 @@ dependencies = [
  "serde",
  "serde_json",
  "shared_types",
- "storage",
+ "storage_with_stream",
  "task_executor",
  "tokio",
  "tracing",
@@ -5770,6 +5772,29 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "append_merkle",
+ "eth2_ssz",
+ "eth2_ssz_derive",
+ "ethereum-types 0.13.1",
+ "hex",
+ "kvdb",
+ "kvdb-memorydb",
+ "kvdb-rocksdb",
+ "merkle_light",
+ "merkle_tree",
+ "rand 0.8.5",
+ "rayon",
+ "shared_types",
+ "tempdir",
+ "tracing",
+ "typenum",
+]
+
+[[package]]
+name = "storage_with_stream"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "append_merkle",
  "async-trait",
  "const_format",
  "eth2_ssz",
@@ -5785,6 +5810,7 @@ dependencies = [
  "rayon",
  "rusqlite",
  "shared_types",
+ "storage",
  "tempdir",
  "tokio-rusqlite",
  "tracing",
@@ -5809,7 +5835,7 @@ dependencies = [
  "rusqlite",
  "serde_json",
  "shared_types",
- "storage",
+ "storage_with_stream",
  "task_executor",
  "tokio",
  "tracing",

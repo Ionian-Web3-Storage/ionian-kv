@@ -15,7 +15,7 @@ use jsonrpsee::http_server::{HttpServerBuilder, HttpServerHandle};
 use kv_rpc_server::KeyValueRpcServer;
 use std::error::Error;
 use std::sync::Arc;
-use storage::log_store::Store;
+use storage_with_stream::Store;
 use task_executor::ShutdownReason;
 use tokio::sync::RwLock;
 

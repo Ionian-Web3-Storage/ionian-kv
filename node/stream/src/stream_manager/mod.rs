@@ -7,7 +7,7 @@ use ethereum_types::H256;
 use jsonrpsee::http_client::HttpClient;
 use ssz::Encode;
 use std::{collections::HashSet, sync::Arc};
-use storage::log_store::Store;
+use storage_with_stream::Store;
 use task_executor::TaskExecutor;
 use tokio::sync::RwLock;
 

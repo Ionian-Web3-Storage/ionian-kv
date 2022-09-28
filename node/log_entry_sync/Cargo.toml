@@ -17,5 +17,5 @@ task_executor = { path = "../../common/task_executor" }
 tokio = "1.19.2"
 ethers = { git = "https://github.com/k-huetsch/ethers-rs.git", branch="ionian-dev", features = ["ws", "rustls", "abigen"] }
 serde_json = "1.0.82"
-storage = { path = "../storage" }
+storage_with_stream = { path = "../storage_with_stream" }
 contract-interface = { path = "../../common/contract-interface" }

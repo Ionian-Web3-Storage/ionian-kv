@@ -6,13 +6,15 @@ use crate::IonianKVConfig;
 use ethereum_types::H256;
 use log_entry_sync::{ContractAddress, LogSyncConfig};
 use rpc::RPCConfig;
-use storage::StorageConfig;
+use storage_with_stream::{LogStorageConfig, StorageConfig};
 use stream::StreamConfig;
 
 impl IonianKVConfig {
     pub fn storage_config(&self) -> Result<StorageConfig, String> {
         Ok(StorageConfig {
-            db_dir: self.db_dir.clone().into(),
+            log_config: LogStorageConfig {
+                db_dir: self.db_dir.clone().into(),
+            },
             kv_db_file: self.kv_db_file.clone().into(),
         })
     }

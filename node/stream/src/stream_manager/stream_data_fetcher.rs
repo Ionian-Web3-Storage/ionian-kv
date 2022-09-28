@@ -4,7 +4,7 @@ use jsonrpsee::http_client::HttpClient;
 use rpc::IonianRpcClient;
 use shared_types::{ChunkArray, Transaction};
 use std::{cmp, sync::Arc, time::Duration};
-use storage::log_store::Store;
+use storage_with_stream::Store;
 use tokio::sync::RwLock;
 
 const RETRY_WAIT_MS: u64 = 1000;

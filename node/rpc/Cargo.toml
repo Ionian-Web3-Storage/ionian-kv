@@ -19,7 +19,7 @@ merkle_light = { path = "../../common/merkle_light" }
 merkle_tree = { path = "../../common/merkle_tree"}
 futures-channel = "^0.3"
 ethereum-types = "0.13"
-storage = { path = "../storage" }
+storage_with_stream = { path = "../storage_with_stream" }
 
 [dev-dependencies]
 serde_json = "1.0.82"

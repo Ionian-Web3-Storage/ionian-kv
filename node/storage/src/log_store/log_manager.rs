@@ -7,23 +7,19 @@ use crate::log_store::{
 use crate::{try_option, IonianKeyValueDB};
 use anyhow::{anyhow, bail, Result};
 use append_merkle::{Algorithm, AppendMerkleTree, Sha3Algorithm};
-use async_trait::async_trait;
-use ethereum_types::{H160, H256};
+use ethereum_types::H256;
 use kvdb_rocksdb::{Database, DatabaseConfig};
 use merkle_light::merkle::{log2_pow2, MerkleTree};
 use merkle_tree::RawLeafSha3Algorithm;
 use rayon::iter::ParallelIterator;
 use rayon::prelude::ParallelSlice;
 use shared_types::{
-    bytes_to_chunks, AccessControlSet, Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof,
-    DataRoot, FlowProof, FlowRangeProof, StreamWriteSet, Transaction,
+    bytes_to_chunks, compute_padded_chunk_size, compute_segment_size, Chunk, ChunkArray,
+    ChunkArrayWithProof, ChunkWithProof, DataRoot, FlowProof, FlowRangeProof, Transaction,
 };
 use std::path::Path;
 use std::sync::Arc;
-use tracing::{debug, instrument};
-
-use super::stream_store::StreamStore;
-use super::{StreamRead, StreamWrite};
+use tracing::{debug, instrument, trace};
 
 /// 256 Bytes
 pub const ENTRY_SIZE: usize = 256;
@@ -36,7 +32,8 @@ pub const COL_TX_DATA_ROOT_INDEX: u32 = 2;
 pub const COL_ENTRY_BATCH_ROOT: u32 = 3;
 pub const COL_TX_COMPLETED: u32 = 4;
 pub const COL_MISC: u32 = 5;
-pub const COL_NUM: u32 = 6;
+pub const COL_SEAL_CONTEXT: u32 = 6;
+pub const COL_NUM: u32 = 7;
 
 type Merkle = AppendMerkleTree<H256, Sha3Algorithm>;
 
@@ -44,7 +41,6 @@ pub struct LogManager {
     db: Arc<dyn IonianKeyValueDB>,
     tx_store: TransactionStore,
     flow_store: FlowStore,
-    stream_store: StreamStore,
     // TODO(zz): Refactor the in-memory merkle and in-disk storage together.
     pora_chunks_merkle: Merkle,
     /// The in-memory structure of the sub merkle tree of the last chunk.
@@ -63,16 +59,17 @@ impl LogStoreChunkWrite for LogManager {
             .tx_store
             .get_tx_by_seq_number(tx_seq)?
             .ok_or_else(|| anyhow!("put chunks with missing tx: tx_seq={}", tx_seq))?;
-        // TODO(kevin): check length for new split node rule
-        // if chunks.start_index.saturating_mul(ENTRY_SIZE as u64) + chunks.data.len() as u64 > tx.size
-        // {
-        //     bail!(
-        //         "put chunks with data out of tx range: tx_seq={} start_index={} data_len={}",
-        //         tx_seq,
-        //         chunks.start_index,
-        //         chunks.data.len()
-        //     );
-        // }
+        let (chunks_for_proof, _) = compute_padded_chunk_size(tx.size as usize);
+        if chunks.start_index.saturating_mul(ENTRY_SIZE as u64) + chunks.data.len() as u64
+            > (chunks_for_proof * ENTRY_SIZE) as u64
+        {
+            bail!(
+                "put chunks with data out of tx range: tx_seq={} start_index={} data_len={}",
+                tx_seq,
+                chunks.start_index,
+                chunks.data.len()
+            );
+        }
         // TODO: Use another struct to avoid confusion.
         let mut flow_entry_array = chunks;
         flow_entry_array.start_index += tx.start_entry_index;
@@ -97,11 +94,14 @@ impl LogStoreWrite for LogManager {
         Ok(())
     }
 
-    fn finalize_tx(&self, tx_seq: u64) -> Result<()> {
+    fn finalize_tx(&mut self, tx_seq: u64) -> Result<()> {
         let tx = self
             .tx_store
             .get_tx_by_seq_number(tx_seq)?
             .ok_or_else(|| anyhow!("finalize_tx with tx missing: tx_seq={}", tx_seq))?;
+
+        self.padding_rear_data(&tx, tx_seq)?;
+
         let tx_end_index = tx.start_entry_index + bytes_to_entries(tx.size);
         // TODO: Check completeness without loading all data in memory.
         // TODO: Should we double check the tx merkle root?
@@ -122,22 +122,7 @@ impl LogStoreWrite for LogManager {
 
     fn revert_to(&mut self, tx_seq: u64) -> Result<()> {
         self.revert_merkle_tree(tx_seq)?;
-        let start_index = ({
-            let this = &self;
-            if this.pora_chunks_merkle.leaves() == 0 {
-                0
-            } else {
-                PORA_CHUNK_SIZE as u64
-                    * if this.last_chunk_merkle.leaves() == 0 {
-                        // The last chunk is empty and its root hash is not in `pora_chunk_merkle`,
-                        // so all chunks in `pora_chunk_merkle` is complete.
-                        this.pora_chunks_merkle.leaves()
-                    } else {
-                        // The last chunk has data, so we need to exclude it from `pora_chunks_merkle`.
-                        this.pora_chunks_merkle.leaves() - 1
-                    } as u64
-            }
-        }) * PORA_CHUNK_SIZE as u64
+        let start_index = self.last_chunk_start_index() * PORA_CHUNK_SIZE as u64
             + self.last_chunk_merkle.leaves() as u64;
         // TODO(zz): We should try to reorder these data based on the new tx seq
         // instead of just deleting them, so the clients do not need to upload data again.
@@ -278,6 +263,26 @@ impl LogStoreRead for LogManager {
     fn next_tx_seq(&self) -> Result<u64> {
         self.tx_store.next_tx_seq()
     }
+
+    fn get_proof_for_flow_index_range(
+        &self,
+        index: u64,
+        length: u64,
+    ) -> crate::error::Result<FlowRangeProof> {
+        let left_proof = self.gen_proof(index)?;
+        let right_proof = self.gen_proof(index + length - 1)?;
+        Ok(FlowRangeProof {
+            left_proof,
+            right_proof,
+        })
+    }
+
+    fn get_context(&self) -> crate::error::Result<(DataRoot, u64)> {
+        Ok((
+            *self.pora_chunks_merkle.root(),
+            self.last_chunk_start_index() + self.last_chunk_merkle.leaves() as u64,
+        ))
+    }
 }
 
 impl Configurable for LogManager {
@@ -291,143 +296,22 @@ impl Configurable for LogManager {
     }
 }
 
-#[async_trait]
-impl StreamRead for LogManager {
-    async fn get_holding_stream_ids(&self) -> crate::error::Result<Vec<H256>> {
-        self.stream_store.get_stream_ids().await
-    }
-
-    async fn get_stream_data_sync_progress(&self) -> Result<u64> {
-        self.stream_store.get_stream_data_sync_progress().await
-    }
-
-    async fn get_stream_replay_progress(&self) -> Result<u64> {
-        self.stream_store.get_stream_replay_progress().await
-    }
-
-    async fn get_latest_version_before(
-        &self,
-        stream_id: H256,
-        key: H256,
-        before: u64,
-    ) -> Result<u64> {
-        self.stream_store
-            .get_latest_version_before(stream_id, key, before)
-            .await
-    }
-
-    async fn has_write_permission(
-        &self,
-        account: H160,
-        stream_id: H256,
-        key: H256,
-        version: u64,
-    ) -> Result<bool> {
-        self.stream_store
-            .has_write_permission(account, stream_id, key, version)
-            .await
-    }
-
-    async fn is_new_stream(&self, stream_id: H256, version: u64) -> Result<bool> {
-        self.stream_store.is_new_stream(stream_id, version).await
-    }
-
-    async fn is_admin(&self, account: H160, stream_id: H256, version: u64) -> Result<bool> {
-        self.stream_store
-            .is_admin(account, stream_id, version)
-            .await
-    }
-
-    async fn get_stream_key_value(
-        &self,
-        stream_id: H256,
-        key: H256,
-        version: u64,
-    ) -> Result<Option<(shared_types::StreamWrite, u64)>> {
-        self.stream_store
-            .get_stream_key_value(stream_id, key, version)
-            .await
-    }
-}
-
-#[async_trait]
-impl StreamWrite for LogManager {
-    async fn reset_stream_sync(&self, stream_ids: Vec<u8>) -> Result<()> {
-        self.stream_store.reset_stream_sync(stream_ids).await
-    }
-
-    async fn update_stream_ids(&self, stream_ids: Vec<u8>) -> Result<()> {
-        self.stream_store.update_stream_ids(stream_ids).await
-    }
-
-    // update the progress and return the next tx_seq to sync
-    async fn update_stream_data_sync_progress(&self, from: u64, progress: u64) -> Result<u64> {
-        if self
-            .stream_store
-            .update_stream_data_sync_progress(from, progress)
-            .await?
-            > 0
-        {
-            Ok(progress + 1)
-        } else {
-            Ok(self.stream_store.get_stream_data_sync_progress().await? + 1)
-        }
-    }
-
-    // update the progress and return the next tx_seq to replay
-    async fn update_stream_replay_progress(&self, from: u64, progress: u64) -> Result<u64> {
-        if self
-            .stream_store
-            .update_stream_replay_progress(from, progress)
-            .await?
-            > 0
-        {
-            Ok(progress + 1)
-        } else {
-            Ok(self.stream_store.get_stream_replay_progress().await? + 1)
-        }
-    }
-
-    async fn put_stream(
-        &self,
-        version: u64,
-        stream_write_set: StreamWriteSet,
-        access_control_set: AccessControlSet,
-    ) -> Result<()> {
-        self.stream_store
-            .put_stream(version, stream_write_set, access_control_set)
-            .await
-    }
-}
-
 impl LogManager {
-    pub async fn memorydb(config: LogConfig) -> Result<Self> {
-        let memory_db = Arc::new(kvdb_memorydb::create(COL_NUM));
-        let stream_store = StreamStore::new_in_memory().await?;
-        stream_store.create_tables_if_not_exist().await?;
-        Self::new(memory_db, stream_store, config)
+    pub fn rocksdb(config: LogConfig, path: impl AsRef<Path>) -> Result<Self> {
+        let mut db_config = DatabaseConfig::with_columns(COL_NUM);
+        db_config.enable_statistics = true;
+        let db = Arc::new(Database::open(&db_config, path)?);
+        Self::new(db, config)
     }
 
-    pub async fn connect_db(
-        config: LogConfig,
-        path: impl AsRef<Path>,
-        kv_db_file: impl AsRef<Path>,
-    ) -> Result<Self> {
-        let mut rocksdb_config = DatabaseConfig::with_columns(COL_NUM);
-        rocksdb_config.enable_statistics = true;
-        let rocksdb = Arc::new(Database::open(&rocksdb_config, path.as_ref())?);
-        let stream_store = StreamStore::new(kv_db_file.as_ref()).await?;
-        stream_store.create_tables_if_not_exist().await?;
-        Self::new(rocksdb, stream_store, config)
+    pub fn memorydb(config: LogConfig) -> Result<Self> {
+        let db = Arc::new(kvdb_memorydb::create(COL_NUM));
+        Self::new(db, config)
     }
 
-    fn new(
-        kvdb: Arc<dyn IonianKeyValueDB>,
-        stream_store: StreamStore,
-        config: LogConfig,
-    ) -> Result<Self> {
-        let tx_store = TransactionStore::new(kvdb.clone());
-        let flow_store = FlowStore::new(kvdb.clone(), config.flow);
+    fn new(db: Arc<dyn IonianKeyValueDB>, config: LogConfig) -> Result<Self> {
+        let tx_store = TransactionStore::new(db.clone());
+        let flow_store = FlowStore::new(db.clone(), config.flow);
         let chunk_roots = flow_store.get_chunk_root_list()?;
         let next_tx_seq = tx_store.next_tx_seq()?;
         let start_tx_seq = if next_tx_seq > 0 {
@@ -435,7 +319,8 @@ impl LogManager {
         } else {
             None
         };
-        let mut pora_chunks_merkle = Merkle::new_with_subtrees(chunk_roots, start_tx_seq)?;
+        let mut pora_chunks_merkle =
+            Merkle::new_with_subtrees(chunk_roots, log2_pow2(PORA_CHUNK_SIZE), start_tx_seq)?;
         let last_chunk_merkle = match start_tx_seq {
             Some(tx_seq) => {
                 tx_store.rebuild_last_chunk_merkle(pora_chunks_merkle.leaves(), tx_seq)?
@@ -454,10 +339,9 @@ impl LogManager {
             pora_chunks_merkle.append(*last_chunk_merkle.root());
         }
         let mut log_manager = Self {
-            db: kvdb,
+            db,
             tx_store,
             flow_store,
-            stream_store,
             pora_chunks_merkle,
             last_chunk_merkle,
         };
@@ -570,19 +454,24 @@ impl LogManager {
         Ok(())
     }
 
+    #[instrument(skip(self))]
     fn pad_tx(&mut self, first_subtree_size: u64) -> Result<()> {
         // Check if we need to pad the flow.
-        let tx_start_flow_index = if self.pora_chunks_merkle.leaves() != 0 {
-            (self.pora_chunks_merkle.leaves() - 1) as u64 * PORA_CHUNK_SIZE as u64
-                + self.last_chunk_merkle.leaves() as u64
-        } else {
-            assert_eq!(self.last_chunk_merkle.leaves(), 0);
-            0
-        };
+        let tx_start_flow_index =
+            self.last_chunk_start_index() + self.last_chunk_merkle.leaves() as u64;
         let extra = tx_start_flow_index % first_subtree_size;
+        trace!(
+            "before pad_tx {} {}",
+            self.pora_chunks_merkle.leaves(),
+            self.last_chunk_merkle.leaves()
+        );
         if extra != 0 {
             let pad_data = Self::padding((first_subtree_size - extra) as usize);
-            let last_chunk_pad = (PORA_CHUNK_SIZE - self.last_chunk_merkle.leaves()) * ENTRY_SIZE;
+            let last_chunk_pad = if self.last_chunk_merkle.leaves() == 0 {
+                0
+            } else {
+                (PORA_CHUNK_SIZE - self.last_chunk_merkle.leaves()) * ENTRY_SIZE
+            };
             if pad_data.len() < last_chunk_pad {
                 self.last_chunk_merkle
                     .append_list(data_to_merkle_leaves(&pad_data)?);
@@ -593,26 +482,28 @@ impl LogManager {
                     start_index: tx_start_flow_index,
                 })?;
             } else {
-                self.last_chunk_merkle
-                    .append_list(data_to_merkle_leaves(&pad_data[..last_chunk_pad])?);
-                self.pora_chunks_merkle
-                    .update_last(*self.last_chunk_merkle.root());
-                self.flow_store.append_entries(ChunkArray {
-                    data: pad_data[..last_chunk_pad].to_vec(),
-                    start_index: tx_start_flow_index as u64,
-                })?;
-
-                self.last_chunk_merkle =
-                    Merkle::new_with_depth(vec![], log2_pow2(PORA_CHUNK_SIZE) + 1, None);
-                let mut start_index = last_chunk_pad / ENTRY_SIZE;
+                if last_chunk_pad != 0 {
+                    // Pad the last chunk.
+                    self.last_chunk_merkle
+                        .append_list(data_to_merkle_leaves(&pad_data[..last_chunk_pad])?);
+                    self.pora_chunks_merkle
+                        .update_last(*self.last_chunk_merkle.root());
+                    self.flow_store.append_entries(ChunkArray {
+                        data: pad_data[..last_chunk_pad].to_vec(),
+                        start_index: tx_start_flow_index as u64,
+                    })?;
+                    self.last_chunk_merkle =
+                        Merkle::new_with_depth(vec![], log2_pow2(PORA_CHUNK_SIZE) + 1, None);
+                }
 
                 // Pad with more complete chunks.
+                let mut start_index = last_chunk_pad / ENTRY_SIZE;
                 while pad_data.len() >= (start_index + PORA_CHUNK_SIZE) * ENTRY_SIZE {
                     let data = pad_data
                         [start_index * ENTRY_SIZE..(start_index + PORA_CHUNK_SIZE) * ENTRY_SIZE]
                         .to_vec();
                     self.pora_chunks_merkle
-                        .append(*Merkle::new(data_to_merkle_leaves(&data)?, None).root());
+                        .append(*Merkle::new(data_to_merkle_leaves(&data)?, 0, None).root());
                     self.flow_store.append_entries(ChunkArray {
                         data,
                         start_index: start_index as u64 + tx_start_flow_index,
@@ -622,26 +513,16 @@ impl LogManager {
                 assert_eq!(pad_data.len(), start_index * ENTRY_SIZE);
             }
         }
+        trace!(
+            "after pad_tx {} {}",
+            self.pora_chunks_merkle.leaves(),
+            self.last_chunk_merkle.leaves()
+        );
         Ok(())
     }
 
     fn append_entries(&mut self, flow_entry_array: ChunkArray) -> Result<()> {
-        let last_chunk_start_index = {
-            let this = &self;
-            if this.pora_chunks_merkle.leaves() == 0 {
-                0
-            } else {
-                PORA_CHUNK_SIZE as u64
-                    * if this.last_chunk_merkle.leaves() == 0 {
-                        // The last chunk is empty and its root hash is not in `pora_chunk_merkle`,
-                        // so all chunks in `pora_chunk_merkle` is complete.
-                        this.pora_chunks_merkle.leaves()
-                    } else {
-                        // The last chunk has data, so we need to exclude it from `pora_chunks_merkle`.
-                        this.pora_chunks_merkle.leaves() - 1
-                    } as u64
-            }
-        };
+        let last_chunk_start_index = self.last_chunk_start_index();
         if flow_entry_array.start_index + bytes_to_chunks(flow_entry_array.data.len()) as u64
             > last_chunk_start_index
         {
@@ -690,6 +571,22 @@ impl LogManager {
         vec![0; len * ENTRY_SIZE]
     }
 
+    fn last_chunk_start_index(&self) -> u64 {
+        if self.pora_chunks_merkle.leaves() == 0 {
+            0
+        } else {
+            PORA_CHUNK_SIZE as u64
+                * if self.last_chunk_merkle.leaves() == 0 {
+                    // The last chunk is empty and its root hash is not in `pora_chunk_merkle`,
+                    // so all chunks in `pora_chunk_merkle` is complete.
+                    self.pora_chunks_merkle.leaves()
+                } else {
+                    // The last chunk has data, so we need to exclude it from `pora_chunks_merkle`.
+                    self.pora_chunks_merkle.leaves() - 1
+                } as u64
+        }
+    }
+
     #[instrument(skip(self))]
     fn commit(&mut self, tx_seq: u64) -> Result<()> {
         self.pora_chunks_merkle.commit(Some(tx_seq));
@@ -726,6 +623,50 @@ impl LogManager {
     #[cfg(test)]
     pub fn flow_store(&self) -> &FlowStore {
         &self.flow_store
+    }
+
+    fn padding_rear_data(&mut self, tx: &Transaction, tx_seq: u64) -> Result<()> {
+        let (chunks, _) = compute_padded_chunk_size(tx.size as usize);
+        let (segments_for_proof, last_segment_size_for_proof) =
+            compute_segment_size(chunks, PORA_CHUNK_SIZE);
+        debug!(
+            "segments_for_proof: {}, last_segment_size_for_proof: {}",
+            segments_for_proof, last_segment_size_for_proof
+        );
+
+        let chunks_for_file = bytes_to_entries(tx.size) as usize;
+        let (mut segments_for_file, mut last_segment_size_for_file) =
+            compute_segment_size(chunks_for_file, PORA_CHUNK_SIZE);
+        debug!(
+            "segments_for_file: {}, last_segment_size_for_file: {}",
+            segments_for_file, last_segment_size_for_file
+        );
+
+        while segments_for_file <= segments_for_proof {
+            let padding_size = if segments_for_file == segments_for_proof {
+                (last_segment_size_for_proof - last_segment_size_for_file) * ENTRY_SIZE
+            } else {
+                (PORA_CHUNK_SIZE - last_segment_size_for_file) * ENTRY_SIZE
+            };
+
+            debug!("Padding size: {}", padding_size);
+            if padding_size > 0 {
+                self.put_chunks(
+                    tx_seq,
+                    ChunkArray {
+                        data: vec![0u8; padding_size],
+                        start_index: ((segments_for_file - 1) * PORA_CHUNK_SIZE
+                            + last_segment_size_for_file)
+                            as u64,
+                    },
+                )?;
+            }
+
+            last_segment_size_for_file = 0;
+            segments_for_file += 1;
+        }
+
+        Ok(())
     }
 }
 
@@ -790,4 +731,48 @@ fn entry_proof(top_proof: &FlowProof, sub_proof: &FlowProof) -> Result<FlowProof
     lemma.extend_from_slice(&top_proof.lemma()[1..]);
     path.extend_from_slice(top_proof.path());
     Ok(FlowProof::new(lemma, path))
+}
+
+pub fn split_nodes(data_size: usize) -> Vec<usize> {
+    let (mut padded_chunks, chunks_next_pow2) = compute_padded_chunk_size(data_size);
+    let mut next_chunk_size = chunks_next_pow2;
+
+    let mut nodes = vec![];
+    while padded_chunks > 0 {
+        if padded_chunks >= next_chunk_size {
+            padded_chunks -= next_chunk_size;
+            nodes.push(next_chunk_size);
+        }
+
+        next_chunk_size >>= 1;
+    }
+
+    nodes
+}
+
+pub fn tx_subtree_root_list_padded(data: &[u8]) -> Vec<(usize, DataRoot)> {
+    let mut root_list = Vec::new();
+    let mut start_index = 0;
+    let nodes = split_nodes(data.len());
+
+    for &tree_size in nodes.iter() {
+        let end = start_index + tree_size * ENTRY_SIZE;
+
+        let submerkle_root = if start_index >= data.len() {
+            sub_merkle_tree(&vec![0u8; tree_size * ENTRY_SIZE])
+                .unwrap()
+                .root()
+        } else if end > data.len() {
+            let mut pad_data = data[start_index..].to_vec();
+            pad_data.append(&mut vec![0u8; end - data.len()]);
+            sub_merkle_tree(&pad_data).unwrap().root()
+        } else {
+            sub_merkle_tree(&data[start_index..end]).unwrap().root()
+        };
+
+        root_list.push((log2_pow2(tree_size) + 1, submerkle_root.into()));
+        start_index += end;
+    }
+
+    root_list
 }

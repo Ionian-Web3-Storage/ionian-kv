@@ -8,9 +8,10 @@ use shared_types::{
 use ssz::Decode;
 use std::collections::{HashMap, HashSet};
 use std::{cmp, sync::Arc, time::Duration};
-use storage::error::Error;
-use storage::log_store::{log_manager::ENTRY_SIZE, Store};
-use storage::AccessControlOps;
+use storage_with_stream::error::Error;
+use storage_with_stream::log_store::log_manager::ENTRY_SIZE;
+use storage_with_stream::AccessControlOps;
+use storage_with_stream::Store;
 use tokio::sync::RwLock;
 
 use super::RETRY_WAIT_MS;
