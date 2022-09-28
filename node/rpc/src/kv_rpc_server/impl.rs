@@ -13,7 +13,7 @@ pub struct KeyValueRpcServerImpl {
 
 #[async_trait]
 impl KeyValueRpcServer for KeyValueRpcServerImpl {
-    async fn get_key(
+    async fn get_value(
         &self,
         stream_id: H256,
         key: H256,
@@ -21,7 +21,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
         len: u64,
         version: Option<u64>,
     ) -> RpcResult<Option<ValueSegment>> {
-        debug!("kv_getKey()");
+        debug!("kv_getValue()");
 
         if len > self.ctx.config.max_query_len_in_bytes {
             return Err(error::invalid_params("len", "query length too large"));
@@ -67,7 +67,6 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
                         ..(end_byte_index as usize - start_entry_index as usize * ENTRY_SIZE)
                             as usize]
                         .to_vec(),
-                    start_index,
                     size: stream_write.end_index - stream_write.start_index,
                 }));
             }

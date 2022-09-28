@@ -63,7 +63,7 @@ impl ClientBuilder {
     /// Initializes RocksDB storage.
     pub async fn with_rocksdb_store(mut self, config: &StorageConfig) -> Result<Self, String> {
         let store = Arc::new(RwLock::new(
-            LogManager::connect_db(LogConfig::default(), &config.db_dir)
+            LogManager::connect_db(LogConfig::default(), &config.db_dir, &config.kv_db_file)
                 .await
                 .map_err(|e| format!("Unable to start RocksDB store: {:?}", e))?,
         ));

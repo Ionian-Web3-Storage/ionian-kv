@@ -124,27 +124,32 @@ impl StreamDataFetcher {
                     }
                     // sync data
                     if !skip {
+                        info!("syncing data of tx with sequence number {:?}..", tx.seq);
                         match self.sync_data(&tx).await {
                             Ok(()) => {
-                                // update progress, get next tx_seq to sync
-                                match self
-                                    .store
-                                    .write()
-                                    .await
-                                    .update_stream_data_sync_progress(tx_seq, tx_seq + 1)
-                                    .await
-                                {
-                                    Ok(next_tx_seq) => {
-                                        tx_seq = next_tx_seq;
-                                    }
-                                    Err(e) => {
-                                        error!("update stream data sync progress error: e={:?}", e);
-                                    }
-                                }
+                                info!("data of tx with sequence number {:?} synced.", tx.seq);
                             }
                             Err(e) => {
-                                error!("update stream data sync progress error: e={:?}", e);
+                                error!("stream data sync error: e={:?}", e);
+                                continue;
                             }
+                        }
+                    } else {
+                        info!("tx {:?} is not in stream, skipped.", tx.seq);
+                    }
+                    // update progress, get next tx_seq to sync
+                    match self
+                        .store
+                        .write()
+                        .await
+                        .update_stream_data_sync_progress(tx_seq, tx_seq + 1)
+                        .await
+                    {
+                        Ok(next_tx_seq) => {
+                            tx_seq = next_tx_seq;
+                        }
+                        Err(e) => {
+                            error!("update stream data sync progress error: e={:?}", e);
                         }
                     }
                 }

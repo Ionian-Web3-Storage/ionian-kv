@@ -22,6 +22,7 @@ build_config! {
 
     // db
     (db_dir, (String), "db".to_string())
+    (kv_db_file, (String), "kv.DB".to_string())
 
     // misc
     (log_config_file, (String), "log_config".to_string())

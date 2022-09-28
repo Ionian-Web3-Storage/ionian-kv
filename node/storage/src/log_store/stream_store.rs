@@ -77,6 +77,7 @@ impl StreamStore {
     }
 
     pub async fn reset_stream_sync(&self, stream_ids: Vec<u8>) -> Result<()> {
+        println!("{:?}", stream_ids);
         self.connection
             .call(move |conn| {
                 let mut stmt = conn.prepare(SqliteDBStatements::RESET_STERAM_SYNC_STATEMENT)?;

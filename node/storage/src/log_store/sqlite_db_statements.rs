@@ -6,11 +6,9 @@ pub struct SqliteDBStatements;
 impl SqliteDBStatements {
     pub const RESET_STERAM_SYNC_STATEMENT: &'static str = "
         INSERT OR REPLACE INTO 
-            t_misc (data_sync_progress, stream_replay_progress, stream_ids) 
+            t_misc (data_sync_progress, stream_replay_progress, stream_ids, id) 
         VALUES 
-            (:data_sync_progress, :stream_replay_progress, :stream_ids)
-        WHERE 
-            id = :id
+            (:data_sync_progress, :stream_replay_progress, :stream_ids, :id)
     ";
 
     pub const GET_STREAM_DATA_SYNC_PROGRESS_STATEMENT: &'static str =

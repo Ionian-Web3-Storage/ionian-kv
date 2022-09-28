@@ -20,9 +20,9 @@ async fn start_node(context: RuntimeContext, config: IonianKVConfig) -> Result<C
         .with_runtime_context(context)
         .with_rocksdb_store(&storage_config)
         .await?
-        .with_stream(&stream_config)
-        .await?
         .with_rpc(rpc_config)
+        .await?
+        .with_stream(&stream_config)
         .await?
         .with_log_sync(log_sync_config)
         .await?

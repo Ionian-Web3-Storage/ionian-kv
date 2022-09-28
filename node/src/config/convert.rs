@@ -13,6 +13,7 @@ impl IonianKVConfig {
     pub fn storage_config(&self) -> Result<StorageConfig, String> {
         Ok(StorageConfig {
             db_dir: self.db_dir.clone().into(),
+            kv_db_file: self.kv_db_file.clone().into(),
         })
     }
 
@@ -20,7 +21,8 @@ impl IonianKVConfig {
         let mut stream_ids: Vec<H256> = vec![];
         for id in &self.stream_ids {
             stream_ids.push(
-                H256::from_str(id).map_err(|_| format!("Unable to parse stream id: {:?}", id))?,
+                H256::from_str(id)
+                    .map_err(|e| format!("Unable to parse stream id: {:?}, error: {:?}", id, e))?,
             );
         }
         stream_ids.sort();

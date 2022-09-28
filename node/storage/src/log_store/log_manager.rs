@@ -408,11 +408,15 @@ impl LogManager {
         Self::new(memory_db, stream_store, config)
     }
 
-    pub async fn connect_db(config: LogConfig, path: impl AsRef<Path>) -> Result<Self> {
+    pub async fn connect_db(
+        config: LogConfig,
+        path: impl AsRef<Path>,
+        kv_db_file: impl AsRef<Path>,
+    ) -> Result<Self> {
         let mut rocksdb_config = DatabaseConfig::with_columns(COL_NUM);
         rocksdb_config.enable_statistics = true;
         let rocksdb = Arc::new(Database::open(&rocksdb_config, path.as_ref())?);
-        let stream_store = StreamStore::new(path.as_ref()).await?;
+        let stream_store = StreamStore::new(kv_db_file.as_ref()).await?;
         stream_store.create_tables_if_not_exist().await?;
         Self::new(rocksdb, stream_store, config)
     }

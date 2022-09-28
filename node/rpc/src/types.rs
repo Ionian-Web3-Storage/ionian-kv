@@ -149,8 +149,6 @@ pub struct ValueSegment {
     // data
     #[serde(with = "base64")]
     pub data: Vec<u8>,
-    // start index
-    pub start_index: u64,
     // value total size
     pub size: u64,
 }

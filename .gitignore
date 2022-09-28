@@ -2,3 +2,9 @@
 .DS_Store
 /.idea
 /db
+run/db
+run/kv.DB
+run/config.toml
+run/run.sh
+dummy*
+tags*
