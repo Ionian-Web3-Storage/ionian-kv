@@ -4,7 +4,7 @@ use jsonrpsee::http_client::HttpClient;
 use rpc::IonianRpcClient;
 use shared_types::{ChunkArray, Transaction};
 use std::{cmp, sync::Arc, time::Duration};
-use storage_with_stream::Store;
+use storage_with_stream::{log_store::log_manager::ENTRY_SIZE, Store};
 use tokio::sync::RwLock;
 
 const RETRY_WAIT_MS: u64 = 1000;
@@ -44,25 +44,32 @@ impl StreamDataFetcher {
                         tx.seq,
                         ChunkArray {
                             data: segment.0,
-                            start_index: tx.start_entry_index + start_index,
+                            start_index,
                         },
                     )?;
                     return Ok(());
                 }
                 Ok(None) => {
+                    debug!(
+                        "start_index {:?}, end_index {:?}, response is none",
+                        start_index, end_index
+                    );
                     fail_cnt += 1;
                     tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
                 }
-                Err(_) => {
-                    //todo: match error types
+                Err(e) => {
+                    debug!(
+                        "start_index {:?}, end_index {:?}, response error: {:?}",
+                        start_index, end_index, e
+                    );
                     fail_cnt += 1;
                     tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
                 }
             }
             if fail_cnt % ALERT_CNT == 0 {
                 warn!(
-                    "Download data of tx_seq {:?} failed for {:?} times",
-                    tx.seq, fail_cnt
+                    "Download data of tx_seq {:?}, start_index {:?}, end_index {:?}, failed for {:?} times",
+                    tx.seq, start_index, end_index, fail_cnt
                 );
             }
         }
@@ -72,14 +79,27 @@ impl StreamDataFetcher {
         if self.store.read().await.check_tx_completed(tx.seq)? {
             return Ok(());
         }
-        for i in (0..tx.size).step_by(ENTRIES_PER_SEGMENT * MAX_DOWNLOAD_TASK) {
+        let tx_size_in_entry = if tx.size % ENTRY_SIZE as u64 == 0 {
+            tx.size / ENTRY_SIZE as u64
+        } else {
+            tx.size / ENTRY_SIZE as u64 + 1
+        };
+        for i in (0..tx_size_in_entry).step_by(ENTRIES_PER_SEGMENT * MAX_DOWNLOAD_TASK) {
             let mut tasks = vec![];
             let tasks_end_index = cmp::min(
-                tx.size,
+                tx_size_in_entry,
                 i + (ENTRIES_PER_SEGMENT * MAX_DOWNLOAD_TASK) as u64,
+            );
+            debug!(
+                "task_start_index: {:?}, tasks_end_index: {:?}, tx_size_in_entry: {:?}, root: {:?}",
+                i, tasks_end_index, tx_size_in_entry, tx.data_merkle_root
             );
             for j in (i..tasks_end_index).step_by(ENTRIES_PER_SEGMENT) {
                 let task_end_index = cmp::min(tasks_end_index, j + ENTRIES_PER_SEGMENT as u64);
+                debug!(
+                    "downloading start_index {:?}, end_index: {:?}",
+                    j, task_end_index
+                );
                 tasks.push(Box::pin(self.download(tx, j, task_end_index)));
             }
             for task in tasks.into_iter() {

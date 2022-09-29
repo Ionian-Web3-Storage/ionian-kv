@@ -238,15 +238,18 @@ impl FileProof {
     }
 }
 
+#[derive(Debug)]
 pub struct StreamRead {
     pub stream_id: H256,
     pub key: H256,
 }
 
+#[derive(Debug)]
 pub struct StreamReadSet {
     pub stream_reads: Vec<StreamRead>,
 }
 
+#[derive(Debug)]
 pub struct StreamWrite {
     pub stream_id: H256,
     pub key: H256,
@@ -256,14 +259,17 @@ pub struct StreamWrite {
     pub end_index: u64,
 }
 
+#[derive(Debug)]
 pub struct StreamWriteSet {
     pub stream_writes: Vec<StreamWrite>,
 }
 
+#[derive(Debug)]
 pub struct AccessControlSet {
     pub access_controls: Vec<AccessControl>,
 }
 
+#[derive(Debug)]
 pub struct AccessControl {
     pub op_type: u8,
     pub stream_id: H256,

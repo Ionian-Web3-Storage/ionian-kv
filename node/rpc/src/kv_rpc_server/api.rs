@@ -6,7 +6,7 @@ use crate::types::ValueSegment;
 
 #[rpc(server, client, namespace = "kv")]
 pub trait KeyValueRpc {
-    #[method(name = "getKey")]
+    #[method(name = "getValue")]
     async fn get_value(
         &self,
         stream_id: H256,

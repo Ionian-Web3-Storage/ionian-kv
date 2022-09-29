@@ -25,7 +25,6 @@ impl StreamManager {
     ) -> Result<(StreamDataFetcher, StreamReplayer)> {
         // initialize
         let holding_stream_ids = store.read().await.get_holding_stream_ids().await?;
-        println!("holding: {:?}", holding_stream_ids);
         let holding_stream_set: HashSet<H256> =
             HashSet::from_iter(holding_stream_ids.iter().cloned());
         // ensure current stream id set is a subset of streams maintained in db

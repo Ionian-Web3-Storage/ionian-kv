@@ -114,6 +114,7 @@ impl FlowWrite for FlowStore {
             let chunk = data
                 .sub_array(start_entry_index, end_entry_index)
                 .expect("in range");
+
             let chunk_index = chunk.start_index / self.config.batch_size as u64;
 
             // TODO: Try to avoid loading from db if possible.

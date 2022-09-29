@@ -75,7 +75,8 @@ impl<'a> StreamReader<'a> {
         }
         while (self.buffer.len() as u64) < size {
             self.load(cmp::min(
-                self.tx.size - self.current_position,
+                ((self.tx.size - self.current_position - 1) / ENTRY_SIZE as u64 + 1)
+                    * ENTRY_SIZE as u64,
                 MAX_LOAD_ENTRY_SIZE,
             ))
             .await?;
@@ -367,18 +368,28 @@ impl StreamReplayer {
     }
 
     async fn replay(&self, tx: &Transaction) -> Result<bool> {
-        if self.store.read().await.check_tx_completed(tx.seq)? {
+        if !self.store.read().await.check_tx_completed(tx.seq)? {
             return Ok(false);
         }
         let mut stream_reader = StreamReader::new(self.store.clone(), tx);
         // parse and validate
         let version = self.parse_version(&mut stream_reader).await?;
+        info!("version: {:?}", version);
+        info!(
+            "current position in Byte: {:?}",
+            stream_reader.current_position_in_bytes()
+        );
         let stream_read_set = match self.parse_stream_read_set(&mut stream_reader).await? {
             Some(x) => x,
             None => {
                 return Ok(true);
             }
         };
+        info!("stream_read_set: {:?}", stream_read_set);
+        info!(
+            "current position in Byte: {:?}",
+            stream_reader.current_position_in_bytes()
+        );
         if !(self
             .validate_stream_read_set(&stream_read_set, tx, version)
             .await?)
@@ -392,6 +403,11 @@ impl StreamReplayer {
                 return Ok(true);
             }
         };
+        info!("stream_write_set: {:?}", stream_write_set);
+        info!(
+            "current position in Byte: {:?}",
+            stream_reader.current_position_in_bytes()
+        );
         if !(self
             .validate_stream_write_set(&stream_write_set, tx, version)
             .await?)
@@ -407,6 +423,11 @@ impl StreamReplayer {
             Some(x) => x,
             None => return Ok(true),
         };
+        info!("access_control_set: {:?}", access_control_set);
+        info!(
+            "current position in Byte: {:?}",
+            stream_reader.current_position_in_bytes()
+        );
         if !(self
             .validate_access_control_set(&mut access_control_set, tx, version)
             .await?)
@@ -463,7 +484,7 @@ impl StreamReplayer {
                                 continue;
                             }
                             Err(e) => {
-                                error!("update stream replay progress error: e={:?}", e);
+                                error!("replay stream data error: e={:?}", e);
                                 tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
                                 continue;
                             }

@@ -158,8 +158,13 @@ impl LogStoreRead for StoreManager {
         self.log_store.next_tx_seq()
     }
 
-    fn get_proof_for_flow_index_range(&self, index: u64, length: u64) -> Result<FlowRangeProof> {
-        self.log_store.get_proof_for_flow_index_range(index, length)
+    fn get_proof_at_root(
+        &self,
+        root: &DataRoot,
+        index: u64,
+        length: u64,
+    ) -> Result<FlowRangeProof> {
+        self.log_store.get_proof_at_root(root, index, length)
     }
 
     fn get_context(&self) -> Result<(DataRoot, u64)> {

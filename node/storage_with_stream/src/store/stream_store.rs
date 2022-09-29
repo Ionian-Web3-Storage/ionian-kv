@@ -15,6 +15,22 @@ pub struct StreamStore {
     connection: Connection,
 }
 
+fn convert_to_i64(x: u64) -> i64 {
+    if x > i64::MAX as u64 {
+        (x - i64::MAX as u64 - 1) as i64
+    } else {
+        x as i64 - i64::MAX - 1
+    }
+}
+
+fn convert_to_u64(x: i64) -> u64 {
+    if x < 0 {
+        (x + i64::MAX + 1) as u64
+    } else {
+        x as u64 + i64::MAX as u64 + 1
+    }
+}
+
 impl StreamStore {
     pub async fn create_tables_if_not_exist(&self) -> Result<()> {
         self.connection
@@ -77,7 +93,6 @@ impl StreamStore {
     }
 
     pub async fn reset_stream_sync(&self, stream_ids: Vec<u8>) -> Result<()> {
-        println!("{:?}", stream_ids);
         self.connection
             .call(move |conn| {
                 let mut stmt = conn.prepare(SqliteDBStatements::RESET_STERAM_SYNC_STATEMENT)?;
@@ -166,12 +181,17 @@ impl StreamStore {
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
                         ":key": key.as_ssz_bytes(),
-                        ":before": before,
+                        ":before": convert_to_i64(before),
                     },
                     |row| row.get(0),
                 )?;
                 if let Some(raw_data) = rows.next() {
-                    return Ok(raw_data?);
+                    match raw_data {
+                        Ok(x) => {
+                            return Ok(convert_to_u64(x));
+                        }
+                        Err(_) => return Ok(0),
+                    }
                 }
                 Ok(0)
             })
@@ -185,7 +205,7 @@ impl StreamStore {
                 let mut rows = stmt.query_map(
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
-                        ":version": version,
+                        ":version": convert_to_i64(version),
                     },
                     |row| row.get(0),
                 )?;
@@ -210,7 +230,7 @@ impl StreamStore {
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
                         ":key": key.as_ssz_bytes(),
-                        ":version": version,
+                        ":version": convert_to_i64(version),
                     },
                     |row| row.get(0),
                 )?;
@@ -237,7 +257,7 @@ impl StreamStore {
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
                         ":account": account.as_ssz_bytes(),
-                        ":version": version,
+                        ":version": convert_to_i64(version),
                     },
                     |row| row.get(0),
                 )?;
@@ -269,7 +289,7 @@ impl StreamStore {
                         ":stream_id": stream_id.as_ssz_bytes(),
                         ":key": key.as_ssz_bytes(),
                         ":account": account.as_ssz_bytes(),
-                        ":version": version,
+                        ":version": convert_to_i64(version),
                     },
                     |row| row.get(0),
                 )?;
@@ -302,7 +322,7 @@ impl StreamStore {
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
                         ":account": account.as_ssz_bytes(),
-                        ":version": version,
+                        ":version": convert_to_i64(version),
                     },
                     |row| row.get(0),
                 )?;
@@ -358,7 +378,7 @@ impl StreamStore {
                         named_params! {
                             ":stream_id": stream_write.stream_id.as_ssz_bytes(),
                             ":key": stream_write.key.as_ssz_bytes(),
-                            ":version": version,
+                            ":version": convert_to_i64(version),
                             ":start_index": stream_write.start_index,
                             ":end_index": stream_write.end_index
                         },
@@ -370,7 +390,7 @@ impl StreamStore {
                         named_params! {
                             ":stream_id": access_control.stream_id.as_ssz_bytes(),
                             ":key": access_control.key.as_ssz_bytes(),
-                            ":version": version,
+                            ":version": convert_to_i64(version),
                             ":account": access_control.account.as_ssz_bytes(),
                             ":op_type": access_control.op_type,
                         },
@@ -395,7 +415,7 @@ impl StreamStore {
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
                         ":key": key.as_ssz_bytes(),
-                        ":version": version,
+                        ":version": convert_to_i64(version),
                     },
                     |row| {
                         Ok((
@@ -405,7 +425,7 @@ impl StreamStore {
                                 start_index: row.get(1)?,
                                 end_index: row.get(2)?,
                             },
-                            row.get(0)?,
+                            convert_to_u64(row.get(0)?),
                         ))
                     },
                 )?;
