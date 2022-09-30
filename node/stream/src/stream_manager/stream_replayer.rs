@@ -29,6 +29,7 @@ const MAX_SIZE_LEN: u32 = 65536;
 struct StreamReader<'a> {
     store: Arc<RwLock<dyn Store>>,
     tx: &'a Transaction,
+    tx_size_in_entry: u64,
     current_position: u64, // the index of next entry to read
     buffer: Vec<u8>,       // buffered data
 }
@@ -38,6 +39,11 @@ impl<'a> StreamReader<'a> {
         Self {
             store,
             tx,
+            tx_size_in_entry: if tx.size % ENTRY_SIZE as u64 == 0 {
+                tx.size / ENTRY_SIZE as u64
+            } else {
+                tx.size / ENTRY_SIZE as u64 + 1
+            },
             current_position: 0,
             buffer: vec![],
         }
@@ -68,15 +74,14 @@ impl<'a> StreamReader<'a> {
 
     // read next ${size} bytes from the stream
     pub async fn next(&mut self, size: u64) -> Result<Vec<u8>> {
-        if (self.buffer.len() as u64) + (self.tx.size - self.current_position) * (ENTRY_SIZE as u64)
+        if (self.buffer.len() as u64) + (self.tx_size_in_entry - self.current_position) * (ENTRY_SIZE as u64)
             < size
         {
             bail!("next target position is larger than tx size");
         }
         while (self.buffer.len() as u64) < size {
             self.load(cmp::min(
-                ((self.tx.size - self.current_position - 1) / ENTRY_SIZE as u64 + 1)
-                    * ENTRY_SIZE as u64,
+                self.tx_size_in_entry - self.current_position,
                 MAX_LOAD_ENTRY_SIZE,
             ))
             .await?;

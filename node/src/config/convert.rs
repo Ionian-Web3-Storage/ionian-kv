@@ -63,6 +63,7 @@ impl IonianKVConfig {
             self.blockchain_rpc_endpoint.clone(),
             contract_address,
             self.log_sync_start_block_number,
+            self.confirmation_block_count,
         ))
     }
 }
