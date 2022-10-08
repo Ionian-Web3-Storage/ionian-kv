@@ -281,13 +281,17 @@ impl StreamWrite for StoreManager {
 
     async fn put_stream(
         &self,
-        version: u64,
-        stream_write_set: StreamWriteSet,
-        access_control_set: AccessControlSet,
+        tx_seq: u64,
+        result: &'static str,
+        commit_data: Option<(StreamWriteSet, AccessControlSet)>,
     ) -> Result<()> {
         self.stream_store
-            .put_stream(version, stream_write_set, access_control_set)
+            .put_stream(tx_seq, result, commit_data)
             .await
+    }
+
+    async fn get_tx_result(&self, tx_seq: u64) -> Result<Option<String>> {
+        self.stream_store.get_tx_result(tx_seq).await
     }
 }
 

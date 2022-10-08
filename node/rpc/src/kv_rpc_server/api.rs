@@ -15,4 +15,7 @@ pub trait KeyValueRpc {
         len: u64,
         version: Option<u64>,
     ) -> RpcResult<Option<ValueSegment>>;
+
+    #[method(name = "getTransactionResult")]
+    async fn get_trasanction_result(&self, tx_seq: u64) -> RpcResult<Option<String>>;
 }

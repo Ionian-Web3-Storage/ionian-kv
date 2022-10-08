@@ -75,8 +75,10 @@ pub trait StreamWrite {
 
     async fn put_stream(
         &self,
-        version: u64,
-        stream_write_set: StreamWriteSet,
-        access_control_set: AccessControlSet,
+        tx_seq: u64,
+        result: &'static str,
+        commit_data: Option<(StreamWriteSet, AccessControlSet)>,
     ) -> Result<()>;
+
+    async fn get_tx_result(&self, tx_seq: u64) -> Result<Option<String>>;
 }
