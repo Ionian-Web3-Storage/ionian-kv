@@ -75,4 +75,10 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             Ok(None)
         }
     }
+
+    async fn get_trasanction_result(&self, tx_seq: u64) -> RpcResult<Option<String>> {
+        debug!("kv_getTransactionResult()");
+
+        Ok(self.ctx.store.read().await.get_tx_result(tx_seq).await?)
+    }
 }

@@ -50,6 +50,11 @@ impl StreamStore {
                 for stmt in SqliteDBStatements::CREATE_ACCESS_CONTROL_INDEX_STATEMENTS.iter() {
                     conn.execute(stmt, [])?;
                 }
+                // tx table
+                conn.execute(SqliteDBStatements::CREATE_TX_TABLE_STATEMENT, [])?;
+                for stmt in SqliteDBStatements::CREATE_TX_INDEX_STATEMENTS.iter() {
+                    conn.execute(stmt, [])?;
+                }
                 Ok(())
             })
             .await
@@ -365,37 +370,47 @@ impl StreamStore {
 
     pub async fn put_stream(
         &self,
-        version: u64,
-        stream_write_set: StreamWriteSet,
-        access_control_set: AccessControlSet,
+        tx_seq: u64,
+        result: &'static str,
+        commit_data: Option<(StreamWriteSet, AccessControlSet)>,
     ) -> Result<()> {
         self.connection
             .call(move |conn| {
                 let tx = conn.transaction()?;
-                for stream_write in stream_write_set.stream_writes.iter() {
-                    tx.execute(
-                        SqliteDBStatements::PUT_STREAM_WRITE_STATEMENT,
-                        named_params! {
-                            ":stream_id": stream_write.stream_id.as_ssz_bytes(),
-                            ":key": stream_write.key.as_ssz_bytes(),
-                            ":version": convert_to_i64(version),
-                            ":start_index": stream_write.start_index,
-                            ":end_index": stream_write.end_index
-                        },
-                    )?;
+                let version = tx_seq;
+                if let Some((stream_write_set, access_control_set)) = commit_data {
+                    for stream_write in stream_write_set.stream_writes.iter() {
+                        tx.execute(
+                            SqliteDBStatements::PUT_STREAM_WRITE_STATEMENT,
+                            named_params! {
+                                ":stream_id": stream_write.stream_id.as_ssz_bytes(),
+                                ":key": stream_write.key.as_ssz_bytes(),
+                                ":version": convert_to_i64(version),
+                                ":start_index": stream_write.start_index,
+                                ":end_index": stream_write.end_index
+                            },
+                        )?;
+                    }
+                    for access_control in access_control_set.access_controls.iter() {
+                        tx.execute(
+                            SqliteDBStatements::PUT_ACCESS_CONTROL_STATEMENT,
+                            named_params! {
+                                ":stream_id": access_control.stream_id.as_ssz_bytes(),
+                                ":key": access_control.key.as_ssz_bytes(),
+                                ":version": convert_to_i64(version),
+                                ":account": access_control.account.as_ssz_bytes(),
+                                ":op_type": access_control.op_type,
+                            },
+                        )?;
+                    }
                 }
-                for access_control in access_control_set.access_controls.iter() {
-                    tx.execute(
-                        SqliteDBStatements::PUT_ACCESS_CONTROL_STATEMENT,
-                        named_params! {
-                            ":stream_id": access_control.stream_id.as_ssz_bytes(),
-                            ":key": access_control.key.as_ssz_bytes(),
-                            ":version": convert_to_i64(version),
-                            ":account": access_control.account.as_ssz_bytes(),
-                            ":op_type": access_control.op_type,
-                        },
-                    )?;
-                }
+                tx.execute(
+                    SqliteDBStatements::FINALIZE_TX_STATEMENT,
+                    named_params! {
+                        ":tx_seq": convert_to_i64(tx_seq),
+                        ":result": result,
+                    },
+                )?;
                 tx.commit()?;
                 Ok(())
             })
@@ -429,6 +444,22 @@ impl StreamStore {
                         ))
                     },
                 )?;
+                if let Some(raw_data) = rows.next() {
+                    return Ok(Some(raw_data?));
+                }
+                Ok(None)
+            })
+            .await
+    }
+
+    pub async fn get_tx_result(&self, tx_seq: u64) -> Result<Option<String>> {
+        self.connection
+            .call(move |conn| {
+                let mut stmt = conn.prepare(SqliteDBStatements::GET_TX_RESULT_STATEMENT)?;
+                let mut rows = stmt
+                    .query_map(named_params! {":tx_seq": convert_to_i64(tx_seq)}, |row| {
+                        row.get(0)
+                    })?;
                 if let Some(raw_data) = rows.next() {
                     return Ok(Some(raw_data?));
                 }

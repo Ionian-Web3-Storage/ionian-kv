@@ -11,6 +11,16 @@ impl SqliteDBStatements {
             (:data_sync_progress, :stream_replay_progress, :stream_ids, :id)
     ";
 
+    pub const FINALIZE_TX_STATEMENT: &'static str = "
+        INSERT OR REPLACE INTO 
+            t_tx (tx_seq, result)
+        VALUES
+            (:tx_seq, :result)
+    ";
+
+    pub const GET_TX_RESULT_STATEMENT: &'static str =
+        "SELECT result FROM t_tx WHERE tx_seq = :tx_seq";
+
     pub const GET_STREAM_DATA_SYNC_PROGRESS_STATEMENT: &'static str =
         "SELECT data_sync_progress FROM t_misc WHERE id = 0";
 
@@ -151,4 +161,14 @@ impl SqliteDBStatements {
         "CREATE INDEX IF NOT EXISTS ac_key_index ON t_access_control(stream_id, key)",
         "CREATE INDEX IF NOT EXISTS ac_account_key_index ON t_access_control(stream_id, key, account)",
     ];
+
+    pub const CREATE_TX_TABLE_STATEMENT: &'static str = "
+        CREATE TABLE IF NOT EXISTS t_tx (
+            tx_seq INTEGER NOT NULL PRIMARY KEY,
+            result VARCHAR(32),
+        ) WITHOUT ROWID
+    ";
+
+    pub const CREATE_TX_INDEX_STATEMENTS: [&'static str; 1] =
+        ["CREATE INDEX IF NOT EXISTS tx_result_idex ON t_tx(result)"];
 }

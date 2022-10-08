@@ -26,6 +26,28 @@ const ACCESS_CONTROL_OP_TYPE_SIZE: u64 = 1;
 const ADDRESS_SIZE: u64 = 20;
 const MAX_SIZE_LEN: u32 = 65536;
 
+enum ReplayResult {
+    Commit(u64, StreamWriteSet, AccessControlSet),
+    DataParseError,
+    VersionConfliction,
+    TagsMismatch,
+    PermissionDenied,
+    DataUnavailable,
+}
+
+impl ReplayResult {
+    fn as_str(&self) -> &'static str {
+        match self {
+            ReplayResult::Commit(_, _, _) => "Commit",
+            ReplayResult::DataParseError => "DataParseError",
+            ReplayResult::VersionConfliction => "VersionConfliction",
+            ReplayResult::TagsMismatch => "TagsMismatch",
+            ReplayResult::PermissionDenied => "PermissionDenied",
+            ReplayResult::DataUnavailable => "DataUnavailable",
+        }
+    }
+}
+
 struct StreamReader<'a> {
     store: Arc<RwLock<dyn Store>>,
     tx: &'a Transaction,
@@ -74,7 +96,8 @@ impl<'a> StreamReader<'a> {
 
     // read next ${size} bytes from the stream
     pub async fn next(&mut self, size: u64) -> Result<Vec<u8>> {
-        if (self.buffer.len() as u64) + (self.tx_size_in_entry - self.current_position) * (ENTRY_SIZE as u64)
+        if (self.buffer.len() as u64)
+            + (self.tx_size_in_entry - self.current_position) * (ENTRY_SIZE as u64)
             < size
         {
             bail!("next target position is larger than tx size");
@@ -149,10 +172,10 @@ impl StreamReplayer {
         stream_read_set: &StreamReadSet,
         tx: &Transaction,
         version: u64,
-    ) -> Result<bool> {
+    ) -> Result<Option<ReplayResult>> {
         for stream_read in stream_read_set.stream_reads.iter() {
             if !self.config.stream_set.contains(&stream_read.stream_id) {
-                return Ok(false);
+                return Ok(Some(ReplayResult::TagsMismatch));
             }
             // check version confiction
             if self
@@ -163,10 +186,10 @@ impl StreamReplayer {
                 .await?
                 > version
             {
-                return Ok(false);
+                return Ok(Some(ReplayResult::VersionConfliction));
             }
         }
-        Ok(true)
+        Ok(None)
     }
 
     async fn parse_stream_write_set(
@@ -215,12 +238,23 @@ impl StreamReplayer {
         stream_write_set: &StreamWriteSet,
         tx: &Transaction,
         version: u64,
-    ) -> Result<bool> {
+    ) -> Result<Option<ReplayResult>> {
         let stream_set = HashSet::<H256>::from_iter(tx.stream_ids.iter().cloned());
         for stream_write in stream_write_set.stream_writes.iter() {
             if !stream_set.contains(&stream_write.stream_id) {
                 // the write set in data is conflict with tx tags
-                return Ok(false);
+                return Ok(Some(ReplayResult::TagsMismatch));
+            }
+            // check version confiction
+            if self
+                .store
+                .read()
+                .await
+                .get_latest_version_before(stream_write.stream_id, stream_write.key, tx.seq)
+                .await?
+                > version
+            {
+                return Ok(Some(ReplayResult::VersionConfliction));
             }
             // check write permission
             if !(self
@@ -230,10 +264,10 @@ impl StreamReplayer {
                 .has_write_permission(tx.sender, stream_write.stream_id, stream_write.key, version)
                 .await?)
             {
-                return Ok(false);
+                return Ok(Some(ReplayResult::PermissionDenied));
             }
         }
-        Ok(true)
+        Ok(None)
     }
 
     async fn parse_access_control_data(
@@ -249,6 +283,7 @@ impl StreamReplayer {
         // all operations can be categorized by op_type & 0xf0
         // for each category, except GRANT_ADMIN_ROLE, only the last operation of each account is reserved
         let mut access_ops = HashMap::new();
+        let stream_set = HashSet::<H256>::from_iter(tx.stream_ids.iter().cloned());
         for _ in 0..(size as usize) {
             let op_type = u8::from_be_bytes(
                 stream_reader
@@ -260,6 +295,10 @@ impl StreamReplayer {
             // parse operation data
             let stream_id = H256::from_ssz_bytes(&stream_reader.next(STREAM_ID_SIZE).await?)
                 .map_err(Error::from)?;
+            if !stream_set.contains(&stream_id) {
+                // the write set in data is conflict with tx tags
+                return Ok(None);
+            }
             let mut account = H160::zero();
             let mut key = H256::zero();
             match op_type {
@@ -322,7 +361,7 @@ impl StreamReplayer {
         access_control_set: &mut AccessControlSet,
         tx: &Transaction,
         version: u64,
-    ) -> Result<bool> {
+    ) -> Result<Option<ReplayResult>> {
         // pad GRANT_ADMIN_ROLE prefix to handle the first write to new stream
         let mut with_prefix_grant_admin_role = vec![];
         let mut is_admin = HashSet::new();
@@ -352,7 +391,7 @@ impl StreamReplayer {
         for access_control in &access_control_set.access_controls {
             if !stream_set.contains(&access_control.stream_id) {
                 // the write set in data is conflict with tx tags
-                return Ok(false);
+                return Ok(Some(ReplayResult::TagsMismatch));
             }
             match access_control.op_type {
                 AccessControlOps::GRANT_ADMIN_ROLE
@@ -363,18 +402,18 @@ impl StreamReplayer {
                 | AccessControlOps::GRANT_SPECIAL_WRITER_ROLE
                 | AccessControlOps::REVOKE_SPECIAL_WRITER_ROLE => {
                     if !is_admin.contains(&access_control.stream_id) {
-                        return Ok(false);
+                        return Ok(Some(ReplayResult::PermissionDenied));
                     }
                 }
                 _ => {}
             }
         }
-        Ok(true)
+        Ok(None)
     }
 
-    async fn replay(&self, tx: &Transaction) -> Result<bool> {
+    async fn replay(&self, tx: &Transaction) -> Result<ReplayResult> {
         if !self.store.read().await.check_tx_completed(tx.seq)? {
-            return Ok(false);
+            return Ok(ReplayResult::DataUnavailable);
         }
         let mut stream_reader = StreamReader::new(self.store.clone(), tx);
         // parse and validate
@@ -387,7 +426,7 @@ impl StreamReplayer {
         let stream_read_set = match self.parse_stream_read_set(&mut stream_reader).await? {
             Some(x) => x,
             None => {
-                return Ok(true);
+                return Ok(ReplayResult::DataParseError);
             }
         };
         info!("stream_read_set: {:?}", stream_read_set);
@@ -395,17 +434,17 @@ impl StreamReplayer {
             "current position in Byte: {:?}",
             stream_reader.current_position_in_bytes()
         );
-        if !(self
+        if let Some(result) = self
             .validate_stream_read_set(&stream_read_set, tx, version)
-            .await?)
+            .await?
         {
-            // there is confliction in stream read set
-            return Ok(true);
+            // validation error in stream read set
+            return Ok(result);
         }
         let stream_write_set = match self.parse_stream_write_set(&mut stream_reader).await? {
             Some(x) => x,
             None => {
-                return Ok(true);
+                return Ok(ReplayResult::DataParseError);
             }
         };
         info!("stream_write_set: {:?}", stream_write_set);
@@ -413,40 +452,37 @@ impl StreamReplayer {
             "current position in Byte: {:?}",
             stream_reader.current_position_in_bytes()
         );
-        if !(self
+        if let Some(result) = self
             .validate_stream_write_set(&stream_write_set, tx, version)
-            .await?)
+            .await?
         {
-            // there is confliction in stream write set
-            // or sender does not have the write permission of all keys
-            return Ok(true);
+            // validation error in stream write set
+            return Ok(result);
         }
         let mut access_control_set = match self
             .parse_access_control_data(tx, &mut stream_reader)
             .await?
         {
             Some(x) => x,
-            None => return Ok(true),
+            None => return Ok(ReplayResult::DataParseError),
         };
         info!("access_control_set: {:?}", access_control_set);
         info!(
             "current position in Byte: {:?}",
             stream_reader.current_position_in_bytes()
         );
-        if !(self
+        if let Some(result) = self
             .validate_access_control_set(&mut access_control_set, tx, version)
-            .await?)
+            .await?
         {
             // there is confliction in access control set
-            return Ok(true);
+            return Ok(result);
         }
-        // update database
-        self.store
-            .write()
-            .await
-            .put_stream(tx.seq, stream_write_set, access_control_set)
-            .await?;
-        Ok(true)
+        Ok(ReplayResult::Commit(
+            tx.seq,
+            stream_write_set,
+            access_control_set,
+        ))
     }
 
     pub async fn run(&self) {
@@ -479,14 +515,65 @@ impl StreamReplayer {
                     if !skip {
                         info!("replaying data of tx with sequence number {:?}..", tx.seq);
                         match self.replay(&tx).await {
-                            Ok(true) => {
-                                info!("tx with sequence number {:?} replayed.", tx.seq);
-                            }
-                            Ok(false) => {
-                                // data not available
-                                info!("data of tx with sequence number {:?} is not available yet, wait..", tx.seq);
-                                tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
-                                continue;
+                            Ok(result) => {
+                                let result_str = result.as_str();
+                                match result {
+                                    ReplayResult::Commit(
+                                        tx_seq,
+                                        stream_write_set,
+                                        access_control_set,
+                                    ) => {
+                                        match self
+                                            .store
+                                            .write()
+                                            .await
+                                            .put_stream(
+                                                tx_seq,
+                                                result_str,
+                                                Some((stream_write_set, access_control_set)),
+                                            )
+                                            .await
+                                        {
+                                            Ok(_) => {
+                                                info!(
+                                                    "tx with sequence number {:?} commit.",
+                                                    tx.seq
+                                                );
+                                            }
+                                            Err(e) => {
+                                                error!("stream replay result finalization error: e={:?}", e);
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                    ReplayResult::DataUnavailable => {
+                                        // data not available
+                                        info!("data of tx with sequence number {:?} is not available yet, wait..", tx.seq);
+                                        tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS))
+                                            .await;
+                                        continue;
+                                    }
+                                    _ => {
+                                        match self
+                                            .store
+                                            .write()
+                                            .await
+                                            .put_stream(tx.seq, result_str, None)
+                                            .await
+                                        {
+                                            Ok(_) => {
+                                                info!(
+                                                    "tx with sequence number {:?} commit.",
+                                                    tx.seq
+                                                );
+                                            }
+                                            Err(e) => {
+                                                error!("stream replay result finalization error: e={:?}", e);
+                                                continue;
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             Err(e) => {
                                 error!("replay stream data error: e={:?}", e);
