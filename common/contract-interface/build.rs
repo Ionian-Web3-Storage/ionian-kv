@@ -7,8 +7,8 @@ const COMPILE_ERROR_MESSAGE: &str =
 
 fn main() {
     if cfg!(feature = "compile-contracts") {
-        println!("cargo:rerun-if-changed=../../ionian-contracts/contracts/");
-        println!("cargo:rerun-if-changed=../../ionian-contracts/hardhat.config.ts");
+        println!("cargo:rerun-if-changed=../../ionian-contracts-poc/contracts/");
+        println!("cargo:rerun-if-changed=../../ionian-contracts-poc/hardhat.config.ts");
 
         let output = Command::new("yarn")
             .arg("--cwd")
