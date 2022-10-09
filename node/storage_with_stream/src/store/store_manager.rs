@@ -58,7 +58,7 @@ impl LogStoreWrite for StoreManager {
         self.log_store.put_sync_progress(progress)
     }
 
-    fn revert_to(&mut self, tx_seq: u64) -> Result<()> {
+    fn revert_to(&mut self, tx_seq: u64) -> Result<Vec<Transaction>> {
         self.log_store.revert_to(tx_seq)
     }
 }
