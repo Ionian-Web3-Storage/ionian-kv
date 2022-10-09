@@ -563,8 +563,8 @@ impl StreamReplayer {
                                         {
                                             Ok(_) => {
                                                 info!(
-                                                    "tx with sequence number {:?} commit.",
-                                                    tx.seq
+                                                    "tx with sequence number {:?} reverted with reason {:?}",
+                                                    tx.seq, result_str
                                                 );
                                             }
                                             Err(e) => {
