@@ -13,6 +13,12 @@ pub struct KeyValueRpcServerImpl {
 
 #[async_trait]
 impl KeyValueRpcServer for KeyValueRpcServerImpl {
+    async fn get_status(&self) -> RpcResult<bool> {
+        debug!("kv_getStatus()");
+
+        Ok(true)
+    }
+
     async fn get_value(
         &self,
         stream_id: H256,
