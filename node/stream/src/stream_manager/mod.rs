@@ -1,3 +1,4 @@
+mod error;
 mod stream_data_fetcher;
 mod stream_replayer;
 
