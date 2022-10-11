@@ -121,6 +121,9 @@ impl<'a> StreamReader<'a> {
         self.buffer.clear();
         let entries_to_skip = size / (ENTRY_SIZE as u64);
         self.current_position += entries_to_skip;
+        if self.current_position > self.tx_size_in_entry {
+            bail!("skip target position is larger than tx size");
+        } 
         size -= entries_to_skip * (ENTRY_SIZE as u64);
         if size > 0 {
             self.next(size).await?;
