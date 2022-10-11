@@ -127,7 +127,31 @@ impl StreamDataFetcher {
                 return;
             }
         }
+
+        let mut check_sync_progress = false;
         loop {
+            if check_sync_progress {
+                match self
+                    .store
+                    .read()
+                    .await
+                    .get_stream_data_sync_progress()
+                    .await
+                {
+                    Ok(progress) => {
+                        if tx_seq != progress {
+                            debug!("reorg happend: tx_seq {}, progress {}", tx_seq, progress);
+                            tx_seq = progress;
+                        }
+                    }
+                    Err(e) => {
+                        error!("get stream data sync progress error: e={:?}", e);
+                    }
+                }
+
+                check_sync_progress = false;
+            }
+
             let maybe_tx = self.store.read().await.get_tx_by_seq_number(tx_seq);
             match maybe_tx {
                 Ok(Some(tx)) => {
@@ -151,6 +175,7 @@ impl StreamDataFetcher {
                             }
                             Err(e) => {
                                 error!("stream data sync error: e={:?}", e);
+                                check_sync_progress = true;
                                 continue;
                             }
                         }
@@ -175,10 +200,12 @@ impl StreamDataFetcher {
                 }
                 Ok(None) => {
                     tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
+                    check_sync_progress = true;
                 }
                 Err(e) => {
                     error!("stream data sync error: e={:?}", e);
                     tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
+                    check_sync_progress = true;
                 }
             }
         }

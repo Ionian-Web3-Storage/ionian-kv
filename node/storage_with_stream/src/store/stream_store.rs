@@ -119,7 +119,7 @@ impl StreamStore {
                     conn.prepare(SqliteDBStatements::GET_STREAM_DATA_SYNC_PROGRESS_STATEMENT)?;
                 let mut rows = stmt.query_map([], |row| row.get(0))?;
                 if let Some(raw_data) = rows.next() {
-                    return Ok(raw_data?);
+                    return Ok(convert_to_u64(raw_data?));
                 }
                 Ok(0)
             })
@@ -136,9 +136,9 @@ impl StreamStore {
                 let mut stmt =
                     conn.prepare(SqliteDBStatements::UPDATE_STREAM_DATA_SYNC_PROGRESS_STATEMENT)?;
                 Ok(stmt.execute(named_params! {
-                    ":data_sync_progress": progress,
+                    ":data_sync_progress": convert_to_i64(progress),
                     ":id": 0,
-                    ":from": from,
+                    ":from": convert_to_i64(from),
                 })?)
             })
             .await
@@ -151,7 +151,7 @@ impl StreamStore {
                     conn.prepare(SqliteDBStatements::GET_STREAM_REPLAY_PROGRESS_STATEMENT)?;
                 let mut rows = stmt.query_map([], |row| row.get(0))?;
                 if let Some(raw_data) = rows.next() {
-                    return Ok(raw_data?);
+                    return Ok(convert_to_u64(raw_data?));
                 }
                 Ok(0)
             })
@@ -164,9 +164,9 @@ impl StreamStore {
                 let mut stmt =
                     conn.prepare(SqliteDBStatements::UPDATE_STREAM_REPLAY_PROGRESS_STATEMENT)?;
                 Ok(stmt.execute(named_params! {
-                    ":stream_replay_progress": progress,
+                    ":stream_replay_progress": convert_to_i64(progress),
                     ":id": 0,
-                    ":from": from,
+                    ":from": convert_to_i64(from),
                 })?)
             })
             .await
@@ -378,6 +378,19 @@ impl StreamStore {
             .call(move |conn| {
                 let tx = conn.transaction()?;
                 let version = tx_seq;
+
+                if tx.execute(
+                    SqliteDBStatements::UPDATE_STREAM_REPLAY_PROGRESS_STATEMENT,
+                    named_params! {
+                        ":stream_replay_progress": convert_to_i64(version + 1),
+                        ":id": 0,
+                        ":from": convert_to_i64(version),
+                    },
+                )? == 0
+                {
+                    return Err(anyhow::Error::msg("tx_seq not match"));
+                }
+
                 if let Some((stream_write_set, access_control_set)) = commit_data {
                     for stream_write in stream_write_set.stream_writes.iter() {
                         tx.execute(
@@ -466,6 +479,65 @@ impl StreamStore {
                 Ok(None)
             })
             .await
+    }
+
+    pub async fn revert_to(&self, tx_seq: u64) -> Result<()> {
+        let stream_data_sync_progress = self.get_stream_data_sync_progress().await?;
+        let stream_replay_progress = self.get_stream_replay_progress().await?;
+
+        assert!(
+            stream_data_sync_progress >= stream_replay_progress,
+            "stream replay progress ahead than data sync progress"
+        );
+
+        if tx_seq < stream_data_sync_progress {
+            if tx_seq < stream_replay_progress {
+                self.connection
+                    .call(move |conn| {
+                        let tx_seq = convert_to_i64(tx_seq);
+                        let tx = conn.transaction()?;
+                        tx.execute(
+                            SqliteDBStatements::UPDATE_STREAM_DATA_SYNC_PROGRESS_STATEMENT,
+                            named_params! {
+                                ":data_sync_progress": tx_seq + 1,
+                                ":id": 0,
+                                ":from": stream_replay_progress,
+                            },
+                        )?;
+
+                        tx.execute(
+                            SqliteDBStatements::UPDATE_STREAM_REPLAY_PROGRESS_STATEMENT,
+                            named_params! {
+                                ":stream_replay_progress": tx_seq + 1,
+                                ":id": 0,
+                                ":from": stream_replay_progress,
+                            },
+                        )?;
+
+                        tx.execute(
+                            SqliteDBStatements::DELETE_TX_STATEMENT,
+                            named_params! {":tx_seq": tx_seq},
+                        )?;
+                        tx.execute(
+                            SqliteDBStatements::DELETE_STREAM_WRITE_STATEMENT,
+                            named_params! {":version": tx_seq},
+                        )?;
+                        tx.execute(
+                            SqliteDBStatements::DELETE_ACCESS_CONTROL_STATEMENT,
+                            named_params! {":version": tx_seq},
+                        )?;
+
+                        tx.commit()?;
+                        Ok::<(), anyhow::Error>(())
+                    })
+                    .await?;
+            } else {
+                self.update_stream_data_sync_progress(stream_data_sync_progress, tx_seq)
+                    .await?;
+            }
+        }
+
+        Ok(())
     }
 }
 

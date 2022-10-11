@@ -510,7 +510,24 @@ impl StreamReplayer {
                 return;
             }
         }
+        let mut check_replay_progress = false;
         loop {
+            if check_replay_progress {
+                match self.store.read().await.get_stream_replay_progress().await {
+                    Ok(progress) => {
+                        if tx_seq != progress {
+                            debug!("reorg happend: tx_seq {}, progress {}", tx_seq, progress);
+                            tx_seq = progress;
+                        }
+                    }
+                    Err(e) => {
+                        error!("get stream replay progress error: e={:?}", e);
+                    }
+                }
+
+                check_replay_progress = false;
+            }
+
             let maybe_tx = self.store.read().await.get_tx_by_seq_number(tx_seq);
             match maybe_tx {
                 Ok(Some(tx)) => {
@@ -543,6 +560,7 @@ impl StreamReplayer {
                                             .await
                                             .put_stream(
                                                 tx_seq,
+                                                tx.data_merkle_root,
                                                 result_str,
                                                 Some((stream_write_set, access_control_set)),
                                             )
@@ -556,6 +574,7 @@ impl StreamReplayer {
                                             }
                                             Err(e) => {
                                                 error!("stream replay result finalization error: e={:?}", e);
+                                                check_replay_progress = true;
                                                 continue;
                                             }
                                         }
@@ -565,6 +584,7 @@ impl StreamReplayer {
                                         info!("data of tx with sequence number {:?} is not available yet, wait..", tx.seq);
                                         tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS))
                                             .await;
+                                        check_replay_progress = true;
                                         continue;
                                     }
                                     _ => {
@@ -572,7 +592,12 @@ impl StreamReplayer {
                                             .store
                                             .write()
                                             .await
-                                            .put_stream(tx.seq, result_str, None)
+                                            .put_stream(
+                                                tx.seq,
+                                                tx.data_merkle_root,
+                                                result_str,
+                                                None,
+                                            )
                                             .await
                                         {
                                             Ok(_) => {
@@ -583,44 +608,52 @@ impl StreamReplayer {
                                             }
                                             Err(e) => {
                                                 error!("stream replay result finalization error: e={:?}", e);
+                                                check_replay_progress = true;
                                                 continue;
                                             }
                                         }
                                     }
                                 }
+
+                                if !check_replay_progress {
+                                    tx_seq += 1;
+                                }
                             }
                             Err(e) => {
                                 error!("replay stream data error: e={:?}", e);
                                 tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
+                                check_replay_progress = true;
                                 continue;
                             }
                         }
                     } else {
                         info!("tx {:?} is not in stream, skipped.", tx.seq);
-                    }
-                    // parse success
-                    // update progress, get next tx_seq to sync
-                    match self
-                        .store
-                        .write()
-                        .await
-                        .update_stream_replay_progress(tx_seq, tx_seq + 1)
-                        .await
-                    {
-                        Ok(next_tx_seq) => {
-                            tx_seq = next_tx_seq;
-                        }
-                        Err(e) => {
-                            error!("update stream replay progress error: e={:?}", e);
+                        // parse success
+                        // update progress, get next tx_seq to sync
+                        match self
+                            .store
+                            .write()
+                            .await
+                            .update_stream_replay_progress(tx_seq, tx_seq + 1)
+                            .await
+                        {
+                            Ok(next_tx_seq) => {
+                                tx_seq = next_tx_seq;
+                            }
+                            Err(e) => {
+                                error!("update stream replay progress error: e={:?}", e);
+                            }
                         }
                     }
                 }
                 Ok(None) => {
                     tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
+                    check_replay_progress = true;
                 }
                 Err(e) => {
                     error!("stream replay error: e={:?}", e);
                     tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
+                    check_replay_progress = true;
                 }
             }
         }

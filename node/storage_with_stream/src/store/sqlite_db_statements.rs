@@ -18,6 +18,8 @@ impl SqliteDBStatements {
             (:tx_seq, :result)
     ";
 
+    pub const DELETE_TX_STATEMENT: &'static str = "DELETE FROM t_tx WHERE tx_seq > :tx_seq";
+
     pub const GET_TX_RESULT_STATEMENT: &'static str =
         "SELECT result FROM t_tx WHERE tx_seq = :tx_seq";
 
@@ -103,12 +105,18 @@ impl SqliteDBStatements {
             (:stream_id, :key, :version, :start_index, :end_index)
     ";
 
+    pub const DELETE_STREAM_WRITE_STATEMENT: &'static str =
+        "DELETE FROM t_stream WHERE version > :version";
+
     pub const PUT_ACCESS_CONTROL_STATEMENT: &'static str = "
         INSERT OR REPLACE INTO
             t_access_control (stream_id, key, version, account, op_type)
         VALUES
             (:stream_id, :key, :version, :account, :op_type)
     ";
+
+    pub const DELETE_ACCESS_CONTROL_STATEMENT: &'static str =
+        "DELETE FROM t_access_control WHERE version > :version ";
 
     pub const GET_STREAM_KEY_VALUE_STATEMENT: &'static str = "
         SELECT version, start_index, end_index FROM 
