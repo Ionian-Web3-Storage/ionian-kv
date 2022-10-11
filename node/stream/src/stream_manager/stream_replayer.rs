@@ -527,7 +527,8 @@ impl StreamReplayer {
 
                 check_replay_progress = false;
             }
-
+            
+            info!("checking tx with sequence number {:?}..", tx_seq);
             let maybe_tx = self.store.read().await.get_tx_by_seq_number(tx_seq);
             match maybe_tx {
                 Ok(Some(tx)) => {
