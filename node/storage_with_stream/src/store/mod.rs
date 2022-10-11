@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use ethereum_types::{H160, H256};
-use shared_types::{AccessControlSet, StreamWriteSet};
+use shared_types::{AccessControlSet, StreamWriteSet, Transaction};
 use storage::log_store::{Configurable, LogStoreRead, LogStoreWrite};
 
 use crate::error::Result;
@@ -76,9 +76,12 @@ pub trait StreamWrite {
     async fn put_stream(
         &self,
         tx_seq: u64,
+        data_merkle_root: H256,
         result: &'static str,
         commit_data: Option<(StreamWriteSet, AccessControlSet)>,
     ) -> Result<()>;
 
     async fn get_tx_result(&self, tx_seq: u64) -> Result<Option<String>>;
+
+    async fn revert_stream(&mut self, tx_seq: u64) -> Result<Vec<Transaction>>;
 }

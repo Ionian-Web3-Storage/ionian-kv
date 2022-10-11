@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Error, Result};
 use async_trait::async_trait;
 use ethereum_types::{H160, H256};
 use shared_types::{
@@ -259,9 +259,9 @@ impl StreamWrite for StoreManager {
             .await?
             > 0
         {
-            Ok(progress + 1)
+            Ok(progress)
         } else {
-            Ok(self.stream_store.get_stream_data_sync_progress().await? + 1)
+            Ok(self.stream_store.get_stream_data_sync_progress().await?)
         }
     }
 
@@ -273,18 +273,30 @@ impl StreamWrite for StoreManager {
             .await?
             > 0
         {
-            Ok(progress + 1)
+            Ok(progress)
         } else {
-            Ok(self.stream_store.get_stream_replay_progress().await? + 1)
+            Ok(self.stream_store.get_stream_replay_progress().await?)
         }
     }
 
     async fn put_stream(
         &self,
         tx_seq: u64,
+        data_merkle_root: H256,
         result: &'static str,
         commit_data: Option<(StreamWriteSet, AccessControlSet)>,
     ) -> Result<()> {
+        match self.log_store.get_tx_by_seq_number(tx_seq) {
+            Ok(Some(tx)) => {
+                if tx.data_merkle_root != data_merkle_root {
+                    return Err(Error::msg("data merkle root deos not match"));
+                }
+            }
+            _ => {
+                return Err(Error::msg("tx does not found"));
+            }
+        }
+
         self.stream_store
             .put_stream(tx_seq, result, commit_data)
             .await
@@ -292,6 +304,11 @@ impl StreamWrite for StoreManager {
 
     async fn get_tx_result(&self, tx_seq: u64) -> Result<Option<String>> {
         self.stream_store.get_tx_result(tx_seq).await
+    }
+
+    async fn revert_stream(&mut self, tx_seq: u64) -> Result<Vec<Transaction>> {
+        self.stream_store.revert_to(tx_seq).await?;
+        self.log_store.revert_to(tx_seq)
     }
 }
 

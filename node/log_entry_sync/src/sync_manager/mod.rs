@@ -162,7 +162,13 @@ impl LogSyncManager {
                     }
                 }
                 // TODO: Process reverted transactions.
-                if let Err(e) = self.store.write().await.revert_to(tx.seq.wrapping_sub(1)) {
+                if let Err(e) = self
+                    .store
+                    .write()
+                    .await
+                    .revert_stream(tx.seq.wrapping_sub(1))
+                    .await
+                {
                     error!("revert_to fails: e={:?}", e);
                     return false;
                 }
