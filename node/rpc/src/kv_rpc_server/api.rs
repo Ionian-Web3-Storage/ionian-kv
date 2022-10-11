@@ -6,6 +6,9 @@ use crate::types::ValueSegment;
 
 #[rpc(server, client, namespace = "kv")]
 pub trait KeyValueRpc {
+    #[method(name = "getStatus")]
+    async fn get_status(&self) -> RpcResult<bool>;
+
     #[method(name = "getValue")]
     async fn get_value(
         &self,

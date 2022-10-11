@@ -1,3 +1,4 @@
+use crate::stream_manager::error::ParseError;
 use crate::StreamConfig;
 use anyhow::{bail, Result};
 use ethereum_types::{H160, H256};
@@ -28,7 +29,7 @@ const MAX_SIZE_LEN: u32 = 65536;
 
 enum ReplayResult {
     Commit(u64, StreamWriteSet, AccessControlSet),
-    DataParseError,
+    DataParseError(String),
     VersionConfliction,
     TagsMismatch,
     PermissionDenied,
@@ -36,14 +37,14 @@ enum ReplayResult {
 }
 
 impl ReplayResult {
-    fn as_str(&self) -> &'static str {
+    fn to_string(&self) -> String {
         match self {
-            ReplayResult::Commit(_, _, _) => "Commit",
-            ReplayResult::DataParseError => "DataParseError",
-            ReplayResult::VersionConfliction => "VersionConfliction",
-            ReplayResult::TagsMismatch => "TagsMismatch",
-            ReplayResult::PermissionDenied => "PermissionDenied",
-            ReplayResult::DataUnavailable => "DataUnavailable",
+            ReplayResult::Commit(_, _, _) => "Commit".to_string(),
+            ReplayResult::DataParseError(e) => format!("DataParseError: {}", e),
+            ReplayResult::VersionConfliction => "VersionConfliction".to_string(),
+            ReplayResult::TagsMismatch => "TagsMismatch".to_string(),
+            ReplayResult::PermissionDenied => "PermissionDenied".to_string(),
+            ReplayResult::DataUnavailable => "DataUnavailable".to_string(),
         }
     }
 }
@@ -89,7 +90,7 @@ impl<'a> StreamReader<'a> {
                 Ok(())
             }
             None => {
-                bail!("only partial data are available");
+                bail!(ParseError::PartialDataAvailable);
             }
         }
     }
@@ -100,7 +101,7 @@ impl<'a> StreamReader<'a> {
             + (self.tx_size_in_entry - self.current_position) * (ENTRY_SIZE as u64)
             < size
         {
-            bail!("next target position is larger than tx size");
+            bail!(ParseError::InvalidData);
         }
         while (self.buffer.len() as u64) < size {
             self.load(cmp::min(
@@ -121,6 +122,9 @@ impl<'a> StreamReader<'a> {
         self.buffer.clear();
         let entries_to_skip = size / (ENTRY_SIZE as u64);
         self.current_position += entries_to_skip;
+        if self.current_position > self.tx_size_in_entry {
+            bail!(ParseError::InvalidData);
+        }
         size -= entries_to_skip * (ENTRY_SIZE as u64);
         if size > 0 {
             self.next(size).await?;
@@ -148,10 +152,10 @@ impl StreamReplayer {
     async fn parse_stream_read_set(
         &self,
         stream_reader: &mut StreamReader<'_>,
-    ) -> Result<Option<StreamReadSet>> {
+    ) -> Result<StreamReadSet> {
         let size = u32::from_be_bytes(stream_reader.next(SET_LEN_SIZE).await?.try_into().unwrap());
         if size > MAX_SIZE_LEN {
-            return Ok(None);
+            bail!(ParseError::ListTooLong);
         }
         let mut stream_read_set = StreamReadSet {
             stream_reads: vec![],
@@ -164,7 +168,7 @@ impl StreamReplayer {
                     .map_err(Error::from)?,
             });
         }
-        Ok(Some(stream_read_set))
+        Ok(stream_read_set)
     }
 
     async fn validate_stream_read_set(
@@ -195,10 +199,10 @@ impl StreamReplayer {
     async fn parse_stream_write_set(
         &self,
         stream_reader: &mut StreamReader<'_>,
-    ) -> Result<Option<StreamWriteSet>> {
+    ) -> Result<StreamWriteSet> {
         let size = u32::from_be_bytes(stream_reader.next(SET_LEN_SIZE).await?.try_into().unwrap());
         if size > MAX_SIZE_LEN {
-            return Ok(None);
+            bail!(ParseError::ListTooLong);
         }
         let stream_write_info_length = size as u64 * (32 + 32 + 8);
         let mut write_data_start_index =
@@ -228,9 +232,9 @@ impl StreamReplayer {
         stream_reader
             .skip(write_data_start_index - stream_reader.current_position_in_bytes())
             .await?;
-        Ok(Some(StreamWriteSet {
+        Ok(StreamWriteSet {
             stream_writes: stream_writes.into_values().collect(),
-        }))
+        })
     }
 
     async fn validate_stream_write_set(
@@ -274,16 +278,15 @@ impl StreamReplayer {
         &self,
         tx: &Transaction,
         stream_reader: &mut StreamReader<'_>,
-    ) -> Result<Option<AccessControlSet>> {
+    ) -> Result<AccessControlSet> {
         let size = u32::from_be_bytes(stream_reader.next(SET_LEN_SIZE).await?.try_into().unwrap());
         if size > MAX_SIZE_LEN {
-            return Ok(None);
+            bail!(ParseError::ListTooLong);
         }
         // use a hashmap to filter out the useless operations
         // all operations can be categorized by op_type & 0xf0
         // for each category, except GRANT_ADMIN_ROLE, only the last operation of each account is reserved
         let mut access_ops = HashMap::new();
-        let stream_set = HashSet::<H256>::from_iter(tx.stream_ids.iter().cloned());
         for _ in 0..(size as usize) {
             let op_type = u8::from_be_bytes(
                 stream_reader
@@ -295,10 +298,6 @@ impl StreamReplayer {
             // parse operation data
             let stream_id = H256::from_ssz_bytes(&stream_reader.next(STREAM_ID_SIZE).await?)
                 .map_err(Error::from)?;
-            if !stream_set.contains(&stream_id) {
-                // the write set in data is conflict with tx tags
-                return Ok(None);
-            }
             let mut account = H160::zero();
             let mut key = H256::zero();
             match op_type {
@@ -333,7 +332,7 @@ impl StreamReplayer {
                 }
                 // unexpected type
                 _ => {
-                    bail!("unexpected access control op type");
+                    bail!(ParseError::InvalidData);
                 }
             }
             let op_meta = (op_type & 0xf0, stream_id, key, account);
@@ -351,9 +350,9 @@ impl StreamReplayer {
                 );
             }
         }
-        Ok(Some(AccessControlSet {
+        Ok(AccessControlSet {
             access_controls: access_ops.into_values().collect(),
-        }))
+        })
     }
 
     async fn validate_access_control_set(
@@ -423,11 +422,16 @@ impl StreamReplayer {
             "current position in Byte: {:?}",
             stream_reader.current_position_in_bytes()
         );
-        let stream_read_set = match self.parse_stream_read_set(&mut stream_reader).await? {
-            Some(x) => x,
-            None => {
-                return Ok(ReplayResult::DataParseError);
-            }
+        let stream_read_set = match self.parse_stream_read_set(&mut stream_reader).await {
+            Ok(x) => x,
+            Err(e) => match e.downcast_ref::<ParseError>() {
+                Some(ParseError::InvalidData | ParseError::ListTooLong) => {
+                    return Ok(ReplayResult::DataParseError(e.to_string()));
+                }
+                Some(ParseError::PartialDataAvailable) | None => {
+                    return Err(e);
+                }
+            },
         };
         info!("stream_read_set: {:?}", stream_read_set);
         info!(
@@ -441,11 +445,16 @@ impl StreamReplayer {
             // validation error in stream read set
             return Ok(result);
         }
-        let stream_write_set = match self.parse_stream_write_set(&mut stream_reader).await? {
-            Some(x) => x,
-            None => {
-                return Ok(ReplayResult::DataParseError);
-            }
+        let stream_write_set = match self.parse_stream_write_set(&mut stream_reader).await {
+            Ok(x) => x,
+            Err(e) => match e.downcast_ref::<ParseError>() {
+                Some(ParseError::InvalidData | ParseError::ListTooLong) => {
+                    return Ok(ReplayResult::DataParseError(e.to_string()));
+                }
+                Some(ParseError::PartialDataAvailable) | None => {
+                    return Err(e);
+                }
+            },
         };
         info!("stream_write_set: {:?}", stream_write_set);
         info!(
@@ -459,13 +468,18 @@ impl StreamReplayer {
             // validation error in stream write set
             return Ok(result);
         }
-        let mut access_control_set = match self
-            .parse_access_control_data(tx, &mut stream_reader)
-            .await?
-        {
-            Some(x) => x,
-            None => return Ok(ReplayResult::DataParseError),
-        };
+        let mut access_control_set =
+            match self.parse_access_control_data(tx, &mut stream_reader).await {
+                Ok(x) => x,
+                Err(e) => match e.downcast_ref::<ParseError>() {
+                    Some(ParseError::InvalidData | ParseError::ListTooLong) => {
+                        return Ok(ReplayResult::DataParseError(e.to_string()));
+                    }
+                    Some(ParseError::PartialDataAvailable) | None => {
+                        return Err(e);
+                    }
+                },
+            };
         info!("access_control_set: {:?}", access_control_set);
         info!(
             "current position in Byte: {:?}",
@@ -513,7 +527,8 @@ impl StreamReplayer {
 
                 check_replay_progress = false;
             }
-
+            
+            info!("checking tx with sequence number {:?}..", tx_seq);
             let maybe_tx = self.store.read().await.get_tx_by_seq_number(tx_seq);
             match maybe_tx {
                 Ok(Some(tx)) => {
@@ -533,7 +548,7 @@ impl StreamReplayer {
                         info!("replaying data of tx with sequence number {:?}..", tx.seq);
                         match self.replay(&tx).await {
                             Ok(result) => {
-                                let result_str = result.as_str();
+                                let result_str = result.to_string();
                                 match result {
                                     ReplayResult::Commit(
                                         tx_seq,
@@ -547,7 +562,7 @@ impl StreamReplayer {
                                             .put_stream(
                                                 tx_seq,
                                                 tx.data_merkle_root,
-                                                result_str,
+                                                result_str.clone(),
                                                 Some((stream_write_set, access_control_set)),
                                             )
                                             .await
@@ -581,15 +596,15 @@ impl StreamReplayer {
                                             .put_stream(
                                                 tx.seq,
                                                 tx.data_merkle_root,
-                                                result_str,
+                                                result_str.clone(),
                                                 None,
                                             )
                                             .await
                                         {
                                             Ok(_) => {
                                                 info!(
-                                                    "tx with sequence number {:?} commit.",
-                                                    tx.seq
+                                                    "tx with sequence number {:?} reverted with reason {:?}",
+                                                    tx.seq, result_str
                                                 );
                                             }
                                             Err(e) => {

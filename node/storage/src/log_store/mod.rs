@@ -8,8 +8,6 @@ use crate::error::Result;
 mod flow_store;
 mod load_chunk;
 pub mod log_manager;
-#[cfg(test)]
-mod tests;
 mod tx_store;
 
 /// The trait to read the transactions already appended to the log.
