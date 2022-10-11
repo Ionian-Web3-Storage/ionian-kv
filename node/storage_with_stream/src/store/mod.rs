@@ -83,7 +83,5 @@ pub trait StreamWrite {
 
     async fn get_tx_result(&self, tx_seq: u64) -> Result<Option<String>>;
 
-    async fn reset_stream_replay_data(&self) -> Result<()>;
-
     async fn revert_stream(&mut self, tx_seq: u64) -> Result<Vec<Transaction>>;
 }

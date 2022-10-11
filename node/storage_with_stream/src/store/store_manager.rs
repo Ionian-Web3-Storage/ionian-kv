@@ -306,10 +306,6 @@ impl StreamWrite for StoreManager {
         self.stream_store.get_tx_result(tx_seq).await
     }
 
-    async fn reset_stream_replay_data(&self) -> Result<()> {
-        self.stream_store.reset_stream_replay_data().await
-    }
-
     async fn revert_stream(&mut self, tx_seq: u64) -> Result<Vec<Transaction>> {
         self.stream_store.revert_to(tx_seq).await?;
         self.log_store.revert_to(tx_seq)
