@@ -1,13 +1,6 @@
 [workspace]
 
 members = [
-    "common/channel",
-    "common/lighthouse_metrics",
-    "common/merkle_tree",
-    "common/task_executor",
-    "common/ionian_kv_version",
-    "common/append_merkle",
-
     "node",
     "node/stream",
     "node/log_entry_sync",
