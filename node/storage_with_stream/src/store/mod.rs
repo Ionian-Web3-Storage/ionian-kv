@@ -77,7 +77,7 @@ pub trait StreamWrite {
         &self,
         tx_seq: u64,
         data_merkle_root: H256,
-        result: &'static str,
+        result: String,
         commit_data: Option<(StreamWriteSet, AccessControlSet)>,
     ) -> Result<()>;
 

@@ -173,7 +173,7 @@ impl SqliteDBStatements {
     pub const CREATE_TX_TABLE_STATEMENT: &'static str = "
         CREATE TABLE IF NOT EXISTS t_tx (
             tx_seq INTEGER NOT NULL PRIMARY KEY,
-            result VARCHAR(32)
+            result VARCHAR(128)
         ) WITHOUT ROWID
     ";
 

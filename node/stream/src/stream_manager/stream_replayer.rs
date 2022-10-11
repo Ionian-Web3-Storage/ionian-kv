@@ -29,7 +29,7 @@ const MAX_SIZE_LEN: u32 = 65536;
 
 enum ReplayResult {
     Commit(u64, StreamWriteSet, AccessControlSet),
-    DataParseError,
+    DataParseError(String),
     VersionConfliction,
     TagsMismatch,
     PermissionDenied,
@@ -37,14 +37,14 @@ enum ReplayResult {
 }
 
 impl ReplayResult {
-    fn as_str(&self) -> &'static str {
+    fn to_string(&self) -> String {
         match self {
-            ReplayResult::Commit(_, _, _) => "Commit",
-            ReplayResult::DataParseError => "DataParseError",
-            ReplayResult::VersionConfliction => "VersionConfliction",
-            ReplayResult::TagsMismatch => "TagsMismatch",
-            ReplayResult::PermissionDenied => "PermissionDenied",
-            ReplayResult::DataUnavailable => "DataUnavailable",
+            ReplayResult::Commit(_, _, _) => "Commit".to_string(),
+            ReplayResult::DataParseError(e) => format!("DataParseError: {}", e),
+            ReplayResult::VersionConfliction => "VersionConfliction".to_string(),
+            ReplayResult::TagsMismatch => "TagsMismatch".to_string(),
+            ReplayResult::PermissionDenied => "PermissionDenied".to_string(),
+            ReplayResult::DataUnavailable => "DataUnavailable".to_string(),
         }
     }
 }
@@ -426,7 +426,7 @@ impl StreamReplayer {
             Ok(x) => x,
             Err(e) => match e.downcast_ref::<ParseError>() {
                 Some(ParseError::InvalidData | ParseError::ListTooLong) => {
-                    return Ok(ReplayResult::DataParseError);
+                    return Ok(ReplayResult::DataParseError(e.to_string()));
                 }
                 Some(ParseError::PartialDataAvailable) | None => {
                     return Err(e);
@@ -449,7 +449,7 @@ impl StreamReplayer {
             Ok(x) => x,
             Err(e) => match e.downcast_ref::<ParseError>() {
                 Some(ParseError::InvalidData | ParseError::ListTooLong) => {
-                    return Ok(ReplayResult::DataParseError);
+                    return Ok(ReplayResult::DataParseError(e.to_string()));
                 }
                 Some(ParseError::PartialDataAvailable) | None => {
                     return Err(e);
@@ -473,7 +473,7 @@ impl StreamReplayer {
                 Ok(x) => x,
                 Err(e) => match e.downcast_ref::<ParseError>() {
                     Some(ParseError::InvalidData | ParseError::ListTooLong) => {
-                        return Ok(ReplayResult::DataParseError);
+                        return Ok(ReplayResult::DataParseError(e.to_string()));
                     }
                     Some(ParseError::PartialDataAvailable) | None => {
                         return Err(e);
@@ -548,7 +548,7 @@ impl StreamReplayer {
                         info!("replaying data of tx with sequence number {:?}..", tx.seq);
                         match self.replay(&tx).await {
                             Ok(result) => {
-                                let result_str = result.as_str();
+                                let result_str = result.to_string();
                                 match result {
                                     ReplayResult::Commit(
                                         tx_seq,
@@ -562,7 +562,7 @@ impl StreamReplayer {
                                             .put_stream(
                                                 tx_seq,
                                                 tx.data_merkle_root,
-                                                result_str,
+                                                result_str.clone(),
                                                 Some((stream_write_set, access_control_set)),
                                             )
                                             .await
@@ -596,7 +596,7 @@ impl StreamReplayer {
                                             .put_stream(
                                                 tx.seq,
                                                 tx.data_merkle_root,
-                                                result_str,
+                                                result_str.clone(),
                                                 None,
                                             )
                                             .await

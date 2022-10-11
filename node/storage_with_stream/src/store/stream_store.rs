@@ -102,8 +102,8 @@ impl StreamStore {
             .call(move |conn| {
                 let mut stmt = conn.prepare(SqliteDBStatements::RESET_STERAM_SYNC_STATEMENT)?;
                 stmt.execute(named_params! {
-                    ":data_sync_progress": 0,
-                    ":stream_replay_progress": 0,
+                    ":data_sync_progress": convert_to_i64(0),
+                    ":stream_replay_progress": convert_to_i64(0),
                     ":stream_ids": stream_ids,
                     ":id": 0,
                 })?;
@@ -371,7 +371,7 @@ impl StreamStore {
     pub async fn put_stream(
         &self,
         tx_seq: u64,
-        result: &'static str,
+        result: String,
         commit_data: Option<(StreamWriteSet, AccessControlSet)>,
     ) -> Result<()> {
         self.connection

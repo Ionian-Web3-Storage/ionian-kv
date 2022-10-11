@@ -283,7 +283,7 @@ impl StreamWrite for StoreManager {
         &self,
         tx_seq: u64,
         data_merkle_root: H256,
-        result: &'static str,
+        result: String,
         commit_data: Option<(StreamWriteSet, AccessControlSet)>,
     ) -> Result<()> {
         match self.log_store.get_tx_by_seq_number(tx_seq) {
