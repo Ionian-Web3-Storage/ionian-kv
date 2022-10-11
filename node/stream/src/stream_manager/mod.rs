@@ -49,6 +49,10 @@ impl StreamManager {
                 .update_stream_ids(config.stream_ids.as_ssz_bytes())
                 .await?;
         }
+
+        // clean replay data
+        store.write().await.reset_stream_replay_data().await?;
+
         // spawn data sync and stream replay threads
         let fetcher = StreamDataFetcher::new(config.clone(), store.clone(), client).await?;
         let replayer = StreamReplayer::new(config.clone(), store.clone()).await?;
