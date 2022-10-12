@@ -114,7 +114,7 @@ dependencies = [
 [[package]]
 name = "append_merkle"
 version = "0.1.0"
-source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#86d216f8cfe7e515d0a42f2ebbc095c9d85d3657"
+source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#4de77d95e794babf830af5939339e73e58938972"
 dependencies = [
  "anyhow",
  "eth2_ssz",
@@ -1002,7 +1002,7 @@ checksum = "245097e9a4535ee1e3e3931fcfcd55a796a44c643e8596ff6566d68f09b87bbc"
 [[package]]
 name = "contract-interface"
 version = "0.1.0"
-source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#86d216f8cfe7e515d0a42f2ebbc095c9d85d3657"
+source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#4de77d95e794babf830af5939339e73e58938972"
 dependencies = [
  "ethers",
  "serde_json",
@@ -1117,9 +1117,9 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
 name = "crypto-bigint"
-version = "0.4.8"
+version = "0.4.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9f2b443d17d49dad5ef0ede301c3179cc923b8822f3393b4d2c28c269dd4a122"
+checksum = "ef2b4b23cddf68b89b8f8069890e8c270d54e2d5fe1b143820234805e4cb17ef"
 dependencies = [
  "generic-array 0.14.6",
  "rand_core 0.6.4",
@@ -2482,9 +2482,9 @@ dependencies = [
 
 [[package]]
 name = "home"
-version = "0.5.3"
+version = "0.5.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2456aef2e6b6a9784192ae780c0f15bc57df0e918585282325e8c8ac27737654"
+checksum = "747309b4b440c06d57b0b25f2aee03ee9b5e5397d288c60e21fc709bb98a7408"
 dependencies = [
  "winapi",
 ]
@@ -2777,7 +2777,7 @@ dependencies = [
 [[package]]
 name = "ionian_spec"
 version = "0.1.0"
-source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#86d216f8cfe7e515d0a42f2ebbc095c9d85d3657"
+source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#4de77d95e794babf830af5939339e73e58938972"
 
 [[package]]
 name = "ipconfig"
@@ -3779,7 +3779,7 @@ dependencies = [
 [[package]]
 name = "lighthouse_metrics"
 version = "0.2.0"
-source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#86d216f8cfe7e515d0a42f2ebbc095c9d85d3657"
+source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#4de77d95e794babf830af5939339e73e58938972"
 dependencies = [
  "lazy_static",
  "prometheus",
@@ -3905,7 +3905,7 @@ dependencies = [
 [[package]]
 name = "merkle_light"
 version = "0.4.0"
-source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#86d216f8cfe7e515d0a42f2ebbc095c9d85d3657"
+source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#4de77d95e794babf830af5939339e73e58938972"
 dependencies = [
  "rayon",
 ]
@@ -3913,7 +3913,7 @@ dependencies = [
 [[package]]
 name = "merkle_tree"
 version = "0.1.0"
-source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#86d216f8cfe7e515d0a42f2ebbc095c9d85d3657"
+source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#4de77d95e794babf830af5939339e73e58938972"
 dependencies = [
  "merkle_light",
  "tiny-keccak",
@@ -6033,7 +6033,7 @@ checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
 [[package]]
 name = "task_executor"
 version = "0.1.0"
-source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#86d216f8cfe7e515d0a42f2ebbc095c9d85d3657"
+source = "git+https://github.com/Ionian-Web3-Storage/ionian-rust.git?branch=main#4de77d95e794babf830af5939339e73e58938972"
 dependencies = [
  "exit-future",
  "futures",
@@ -6240,9 +6240,9 @@ dependencies = [
 
 [[package]]
 name = "tokio-stream"
-version = "0.1.10"
+version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6edf2d6bc038a43d31353570e27270603f4648d18f5ed10c0e179abe43255af"
+checksum = "d660770404473ccd7bc9f8b28494a811bc18542b915c0855c51e8f419d5223ce"
 dependencies = [
  "futures-core",
  "pin-project-lite 0.2.9",
