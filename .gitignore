@@ -12,3 +12,4 @@ test.py
 test.txt
 build.sh
 ccov
+*.pyc

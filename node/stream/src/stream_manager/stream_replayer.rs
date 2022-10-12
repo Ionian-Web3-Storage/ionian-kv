@@ -8,6 +8,7 @@ use shared_types::{
 };
 use ssz::Decode;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::{cmp, sync::Arc, time::Duration};
 use storage_with_stream::error::Error;
 use storage_with_stream::log_store::log_manager::ENTRY_SIZE;
@@ -36,15 +37,15 @@ enum ReplayResult {
     DataUnavailable,
 }
 
-impl ReplayResult {
-    fn to_string(&self) -> String {
+impl fmt::Display for ReplayResult {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ReplayResult::Commit(_, _, _) => "Commit".to_string(),
-            ReplayResult::DataParseError(e) => format!("DataParseError: {}", e),
-            ReplayResult::VersionConfliction => "VersionConfliction".to_string(),
-            ReplayResult::TagsMismatch => "TagsMismatch".to_string(),
-            ReplayResult::PermissionDenied => "PermissionDenied".to_string(),
-            ReplayResult::DataUnavailable => "DataUnavailable".to_string(),
+            ReplayResult::Commit(_, _, _) => write!(f, "Commit"),
+            ReplayResult::DataParseError(e) => write!(f, "DataParseError: {}", e),
+            ReplayResult::VersionConfliction => write!(f, "VersionConfliction"),
+            ReplayResult::TagsMismatch => write!(f, "TagsMismatch"),
+            ReplayResult::PermissionDenied => write!(f, "PermissionDenied"),
+            ReplayResult::DataUnavailable => write!(f, "DataUnavailable"),
         }
     }
 }
@@ -527,7 +528,7 @@ impl StreamReplayer {
 
                 check_replay_progress = false;
             }
-            
+
             info!("checking tx with sequence number {:?}..", tx_seq);
             let maybe_tx = self.store.read().await.get_tx_by_seq_number(tx_seq);
             match maybe_tx {
