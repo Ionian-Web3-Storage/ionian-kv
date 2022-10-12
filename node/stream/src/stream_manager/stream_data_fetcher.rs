@@ -1,5 +1,5 @@
 use crate::StreamConfig;
-use anyhow::Result;
+use anyhow::{anyhow, bail, Result};
 use jsonrpsee::http_client::HttpClient;
 use rpc::IonianRpcClient;
 use shared_types::{ChunkArray, Transaction};
@@ -31,20 +31,36 @@ impl StreamDataFetcher {
         })
     }
 
-    async fn download(&self, tx: &Transaction, start_index: u64, end_index: u64) -> Result<()> {
+    async fn download_with_proof(
+        &self,
+        tx: &Transaction,
+        start_index: usize,
+        end_index: usize,
+    ) -> Result<()> {
         let mut fail_cnt = 0;
         loop {
             match self
                 .client
-                .download_segment(tx.data_merkle_root, start_index as u32, end_index as u32)
+                .download_segment_with_proof(tx.data_merkle_root, start_index as usize)
                 .await
             {
                 Ok(Some(segment)) => {
+                    if segment.data.len() % ENTRY_SIZE != 0
+                        || segment.data.len() / ENTRY_SIZE != end_index - start_index
+                    {
+                        bail!(anyhow!("invalid data length"));
+                    }
+
+                    if segment.root != tx.data_merkle_root {
+                        bail!(anyhow!("invalid file root"));
+                    }
+
+                    segment.validate(ENTRIES_PER_SEGMENT)?;
                     self.store.write().await.put_chunks(
                         tx.seq,
                         ChunkArray {
-                            data: segment.0,
-                            start_index,
+                            data: segment.data,
+                            start_index: (segment.index * ENTRIES_PER_SEGMENT) as u64,
                         },
                     )?;
                     return Ok(());
@@ -100,7 +116,11 @@ impl StreamDataFetcher {
                     "downloading start_index {:?}, end_index: {:?}",
                     j, task_end_index
                 );
-                tasks.push(Box::pin(self.download(tx, j, task_end_index)));
+                tasks.push(Box::pin(self.download_with_proof(
+                    tx,
+                    j as usize,
+                    task_end_index as usize,
+                )));
             }
             for task in tasks.into_iter() {
                 task.await?;
