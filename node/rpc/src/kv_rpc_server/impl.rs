@@ -38,11 +38,8 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             None => u64::MAX,
         };
 
-        if let Some((stream_write, latest_version)) = self
-            .ctx
-            .store
-            .read()
-            .await
+        let store_read = self.ctx.store.read().await;
+        if let Some((stream_write, latest_version)) = store_read
             .get_stream_key_value(stream_id, key, before_version)
             .await?
         {
@@ -60,11 +57,8 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             } else {
                 end_byte_index / ENTRY_SIZE as u64 + 1
             };
-            if let Some(entry_array) =
-                self.ctx.store.read().await.get_chunk_by_flow_index(
-                    start_entry_index,
-                    end_entry_index - start_entry_index,
-                )?
+            if let Some(entry_array) = store_read
+                .get_chunk_by_flow_index(start_entry_index, end_entry_index - start_entry_index)?
             {
                 return Ok(Some(ValueSegment {
                     version: latest_version,
