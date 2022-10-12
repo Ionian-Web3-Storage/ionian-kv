@@ -245,16 +245,14 @@ impl StreamReplayer {
         version: u64,
     ) -> Result<Option<ReplayResult>> {
         let stream_set = HashSet::<H256>::from_iter(tx.stream_ids.iter().cloned());
+        let store_read = self.store.read().await;
         for stream_write in stream_write_set.stream_writes.iter() {
             if !stream_set.contains(&stream_write.stream_id) {
                 // the write set in data is conflict with tx tags
                 return Ok(Some(ReplayResult::TagsMismatch));
             }
             // check version confiction
-            if self
-                .store
-                .read()
-                .await
+            if store_read
                 .get_latest_version_before(stream_write.stream_id, stream_write.key, tx.seq)
                 .await?
                 > version
@@ -262,10 +260,7 @@ impl StreamReplayer {
                 return Ok(Some(ReplayResult::VersionConfliction));
             }
             // check write permission
-            if !(self
-                .store
-                .read()
-                .await
+            if !(store_read
                 .has_write_permission(tx.sender, stream_write.stream_id, stream_write.key, version)
                 .await?)
             {
@@ -365,8 +360,9 @@ impl StreamReplayer {
         // pad GRANT_ADMIN_ROLE prefix to handle the first write to new stream
         let mut with_prefix_grant_admin_role = vec![];
         let mut is_admin = HashSet::new();
+        let store_read = self.store.read().await;
         for id in &tx.stream_ids {
-            if self.store.read().await.is_new_stream(*id, version).await? {
+            if store_read.is_new_stream(*id, version).await? {
                 with_prefix_grant_admin_role.push(AccessControl {
                     op_type: AccessControlOps::GRANT_ADMIN_ROLE,
                     stream_id: *id,
@@ -374,13 +370,7 @@ impl StreamReplayer {
                     account: tx.sender,
                 });
                 is_admin.insert(*id);
-            } else if self
-                .store
-                .read()
-                .await
-                .is_admin(tx.sender, *id, version)
-                .await?
-            {
+            } else if store_read.is_admin(tx.sender, *id, version).await? {
                 is_admin.insert(*id);
             }
         }

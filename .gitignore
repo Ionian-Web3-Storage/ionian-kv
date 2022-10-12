@@ -12,4 +12,6 @@ test.py
 test.txt
 build.sh
 ccov
+tests/**/__pycache__
 *.pyc
+tests/utility/geth

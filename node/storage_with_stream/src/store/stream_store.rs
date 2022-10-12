@@ -279,7 +279,7 @@ impl StreamStore {
             .await
     }
 
-    pub async fn is_writer_for_key(
+    pub async fn is_writer_of_key(
         &self,
         account: H160,
         stream_id: H256,
@@ -314,7 +314,7 @@ impl StreamStore {
             .await
     }
 
-    pub async fn is_writer_for_stream(
+    pub async fn is_writer_of_stream(
         &self,
         account: H160,
         stream_id: H256,
@@ -361,10 +361,10 @@ impl StreamStore {
             return Ok(true);
         }
         if self.is_special_key(stream_id, key, version).await? {
-            self.is_writer_for_key(account, stream_id, key, version)
+            self.is_writer_of_key(account, stream_id, key, version)
                 .await
         } else {
-            self.is_writer_for_stream(account, stream_id, version).await
+            self.is_writer_of_stream(account, stream_id, version).await
         }
     }
 

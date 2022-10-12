@@ -31,6 +31,8 @@ op_with_address = [
 
 
 MAX_STREAM_ID = 100
+MAX_DATA_LENGTH = 256 * 1024 * 4
+MIN_DATA_LENGTH = 10
 MAX_U64 = (1 << 64) - 1
 
 STREAM_DOMAIN = bytes.fromhex(
@@ -52,6 +54,10 @@ def to_key(x):
 
 def rand_key():
     return to_key(random.randrange(0, MAX_U64))
+
+
+def rand_write():
+    return [to_stream_id(random.randrange(0, MAX_STREAM_ID)), rand_key(), random.randrange(MIN_DATA_LENGTH, MAX_DATA_LENGTH)]
 
 # reads: array of [stream_id, key]
 # writes: array of [stream_id, key, data_length]

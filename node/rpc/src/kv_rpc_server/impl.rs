@@ -1,6 +1,7 @@
 use crate::error;
 use crate::types::ValueSegment;
 use crate::Context;
+use ethereum_types::H160;
 use storage_with_stream::log_store::log_manager::ENTRY_SIZE;
 
 use super::api::KeyValueRpcServer;
@@ -33,16 +34,10 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             return Err(error::invalid_params("len", "query length too large"));
         }
 
-        let before_version = match version {
-            Some(v) => v,
-            None => u64::MAX,
-        };
+        let before_version = version.unwrap_or(u64::MAX);
 
-        if let Some((stream_write, latest_version)) = self
-            .ctx
-            .store
-            .read()
-            .await
+        let store_read = self.ctx.store.read().await;
+        if let Some((stream_write, latest_version)) = store_read
             .get_stream_key_value(stream_id, key, before_version)
             .await?
         {
@@ -60,11 +55,8 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             } else {
                 end_byte_index / ENTRY_SIZE as u64 + 1
             };
-            if let Some(entry_array) =
-                self.ctx.store.read().await.get_chunk_by_flow_index(
-                    start_entry_index,
-                    end_entry_index - start_entry_index,
-                )?
+            if let Some(entry_array) = store_read
+                .get_chunk_by_flow_index(start_entry_index, end_entry_index - start_entry_index)?
             {
                 return Ok(Some(ValueSegment {
                     version: latest_version,
@@ -86,5 +78,108 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
         debug!("kv_getTransactionResult()");
 
         Ok(self.ctx.store.read().await.get_tx_result(tx_seq).await?)
+    }
+
+    async fn get_holding_stream_ids(&self) -> RpcResult<Vec<H256>> {
+        debug!("kv_getHoldingStreamIds()");
+
+        Ok(self.ctx.store.read().await.get_holding_stream_ids().await?)
+    }
+
+    async fn has_write_permission(
+        &self,
+        account: H160,
+        stream_id: H256,
+        key: H256,
+        version: Option<u64>,
+    ) -> RpcResult<bool> {
+        debug!("kv_hasWritePermission()");
+
+        let before_version = version.unwrap_or(u64::MAX);
+
+        Ok(self
+            .ctx
+            .store
+            .read()
+            .await
+            .has_write_permission(account, stream_id, key, before_version)
+            .await?)
+    }
+
+    async fn is_admin(
+        &self,
+        account: H160,
+        stream_id: H256,
+        version: Option<u64>,
+    ) -> RpcResult<bool> {
+        debug!("kv_isAdmin()");
+
+        let before_version = version.unwrap_or(u64::MAX);
+
+        Ok(self
+            .ctx
+            .store
+            .read()
+            .await
+            .is_admin(account, stream_id, before_version)
+            .await?)
+    }
+
+    async fn is_special_key(
+        &self,
+        stream_id: H256,
+        key: H256,
+        version: Option<u64>,
+    ) -> RpcResult<bool> {
+        debug!("kv_isSpecialKey()");
+
+        let before_version = version.unwrap_or(u64::MAX);
+
+        Ok(self
+            .ctx
+            .store
+            .read()
+            .await
+            .is_special_key(stream_id, key, before_version)
+            .await?)
+    }
+
+    async fn is_writer_of_key(
+        &self,
+        account: H160,
+        stream_id: H256,
+        key: H256,
+        version: Option<u64>,
+    ) -> RpcResult<bool> {
+        debug!("kv_isWriterOfKey()");
+
+        let before_version = version.unwrap_or(u64::MAX);
+
+        Ok(self
+            .ctx
+            .store
+            .read()
+            .await
+            .is_writer_of_key(account, stream_id, key, before_version)
+            .await?)
+    }
+
+    async fn is_writer_of_stream(
+        &self,
+        account: H160,
+        stream_id: H256,
+        version: Option<u64>,
+    ) -> RpcResult<bool> {
+        debug!("kv_isWriterOfStream()");
+
+        let before_version = version.unwrap_or(u64::MAX);
+
+        Ok(self
+            .ctx
+            .store
+            .read()
+            .await
+            .is_writer_of_stream(account, stream_id, before_version)
+            .await?)
     }
 }

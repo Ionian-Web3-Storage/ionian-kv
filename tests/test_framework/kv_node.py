@@ -49,6 +49,7 @@ class KVNode(TestNode):
             log,
             rpc_timeout,
         )
+        self.rpc_cnt = 0
 
     def setup_config(self):
         os.mkdir(self.data_dir)
@@ -86,3 +87,21 @@ class KVNode(TestNode):
 
     def kv_get_trasanction_result(self, tx_seq):
         return self.rpc.kv_getTransactionResult([tx_seq])
+
+    def kv_get_holding_stream_ids(self):
+        return self.rpc.kv_getHoldingStreamIds() 
+
+    def kv_has_write_permission(self, account, stream_id, key, version=None):
+        return self.rpc.kv_hasWritePermission([account, stream_id, key, version])
+
+    def kv_is_admin(self, account, stream_id, version=None):
+        return self.rpc.kv_isAdmin([account, stream_id, version])
+
+    def kv_is_special_key(self, stream_id, key, version=None):
+        return self.rpc.kv_isSpecialKey([stream_id, key, version])
+
+    def kv_is_writer_of_key(self, account, stream_id, key, version=None):
+        return self.rpc.kv_isWriterOfKey([account, stream_id, key, version])
+
+    def kv_is_writer_of_stream(self, account, stream_id, version=None):
+        return self.rpc.kv_isWriterOfStream([account, stream_id, version])

@@ -34,13 +34,13 @@ class ContractProxy:
 
 class FlowContractProxy(ContractProxy):
     def submit(
-        self, submission_nodes, node_idx=0, tx_prarams=TX_PARAMS, parent_hash=None
+        self, submission_nodes, node_idx=0, tx_params=TX_PARAMS, parent_hash=None
     ):
         assert node_idx < len(self.blockchain_nodes)
 
         contract = self._get_contract(node_idx)
         tx_hash = contract.functions.submit(
-            submission_nodes).transact(tx_prarams)
+            submission_nodes).transact(tx_params)
         receipt = self.blockchain_nodes[node_idx].wait_for_transaction_receipt(
             contract.web3, tx_hash, parent_hash=parent_hash
         )
