@@ -21,7 +21,7 @@ class KVNode(TestNode):
         updated_config,
         log_contract_address,
         log,
-        rpc_timeout=10,
+        rpc_timeout=30,
         stream_ids=[]
     ):
         local_conf = KV_CONFIG.copy()
@@ -49,6 +49,7 @@ class KVNode(TestNode):
             log,
             rpc_timeout,
         )
+        self.rpc_cnt = 0
 
     def setup_config(self):
         os.mkdir(self.data_dir)
@@ -69,7 +70,9 @@ class KVNode(TestNode):
     def check_equal(self, stream_id, key, value, version=None):
         i = 0
         while i < len(value):
+            self.rpc_cnt += 1
             res = self.kv_get_value(stream_id, key, i, 1000, version)
+            self.log.info("rpc #{} done".format(self.rpc_cnt))
             if i + 1000 < len(value):
                 assert_equal(base64.b64decode(
                     res['data'].encode("utf-8")
