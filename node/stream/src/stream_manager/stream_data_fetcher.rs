@@ -41,7 +41,7 @@ impl StreamDataFetcher {
         loop {
             match self
                 .client
-                .download_segment_with_proof(tx.data_merkle_root, start_index as usize)
+                .download_segment_with_proof(tx.data_merkle_root, start_index / ENTRIES_PER_SEGMENT)
                 .await
             {
                 Ok(Some(segment)) => {
