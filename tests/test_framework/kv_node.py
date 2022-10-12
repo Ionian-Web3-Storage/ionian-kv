@@ -21,7 +21,7 @@ class KVNode(TestNode):
         updated_config,
         log_contract_address,
         log,
-        rpc_timeout=30,
+        rpc_timeout=10,
         stream_ids=[]
     ):
         local_conf = KV_CONFIG.copy()
@@ -70,9 +70,7 @@ class KVNode(TestNode):
     def check_equal(self, stream_id, key, value, version=None):
         i = 0
         while i < len(value):
-            self.rpc_cnt += 1
             res = self.kv_get_value(stream_id, key, i, 1000, version)
-            self.log.info("rpc #{} done".format(self.rpc_cnt))
             if i + 1000 < len(value):
                 assert_equal(base64.b64decode(
                     res['data'].encode("utf-8")
@@ -89,3 +87,21 @@ class KVNode(TestNode):
 
     def kv_get_trasanction_result(self, tx_seq):
         return self.rpc.kv_getTransactionResult([tx_seq])
+
+    def kv_get_holding_stream_ids(self):
+        return self.rpc.kv_getHoldingStreamIds() 
+
+    def kv_has_write_permission(self, account, stream_id, key, version=None):
+        return self.rpc.kv_hasWritePermission([account, stream_id, key, version])
+
+    def kv_is_admin(self, account, stream_id, version=None):
+        return self.rpc.kv_isAdmin([account, stream_id, version])
+
+    def kv_is_special_key(self, stream_id, key, version=None):
+        return self.rpc.kv_isSpecialKey([stream_id, key, version])
+
+    def kv_is_writer_of_key(self, account, stream_id, key, version=None):
+        return self.rpc.kv_isWriterOfKey([account, stream_id, key, version])
+
+    def kv_is_writer_of_stream(self, account, stream_id, version=None):
+        return self.rpc.kv_isWriterOfStream([account, stream_id, version])

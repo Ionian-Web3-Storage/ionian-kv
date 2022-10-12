@@ -55,6 +55,23 @@ pub trait StreamRead {
 
     async fn is_admin(&self, account: H160, stream_id: H256, version: u64) -> Result<bool>;
 
+    async fn is_special_key(&self, stream_id: H256, key: H256, version: u64) -> Result<bool>;
+
+    async fn is_writer_of_key(
+        &self,
+        account: H160,
+        stream_id: H256,
+        key: H256,
+        version: u64,
+    ) -> Result<bool>;
+
+    async fn is_writer_of_stream(
+        &self,
+        account: H160,
+        stream_id: H256,
+        version: u64,
+    ) -> Result<bool>;
+
     async fn get_stream_key_value(
         &self,
         stream_id: H256,

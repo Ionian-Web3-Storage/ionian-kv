@@ -13,7 +13,7 @@ from utility.utils import (
     assert_equal,
     wait_until,
 )
-from config.node_config import TX_PARAMS, TX_PARAMS1
+from config.node_config import TX_PARAMS, TX_PARAMS1, GENESIS_ACCOUNT, GENESIS_ACCOUNT1
 
 
 class KVPutGetTest(TestFramework):
@@ -24,7 +24,12 @@ class KVPutGetTest(TestFramework):
     def run_test(self):
         # setup kv node, watch stream with id [0,100)
         self.stream_ids = [to_stream_id(i) for i in range(MAX_STREAM_ID)]
+        self.stream_ids.reverse()
         self.setup_kv_node(0, self.stream_ids)
+        self.stream_ids.reverse()
+        assert_equal([x[2:] for x in self.kv_nodes[0].kv_get_holding_stream_ids()], self.stream_ids)
+
+        # tx_seq and data mapping
         self.next_tx_seq = 0
         self.data = {}
         # write empty stream
@@ -61,14 +66,12 @@ class KVPutGetTest(TestFramework):
             self.next_tx_seq) == "Commit")
         self.next_tx_seq += 1
 
+        # check data and admin role
         self.update_data(writes)
-        i = 0
         for stream_id_key, value in self.data.items():
             stream_id, key = stream_id_key.split(',')
-            print("{}, {}, {}".format(i, stream_id, key))
-            i += 1
             self.kv_nodes[0].check_equal(stream_id, key, value)
-
+            assert_equal(self.kv_nodes[0].kv_is_admin(GENESIS_ACCOUNT.address, stream_id), True)
 
 if __name__ == "__main__":
-    KVTest().main()
+    KVPutGetTest().main()

@@ -229,6 +229,35 @@ impl StreamRead for StoreManager {
             .await
     }
 
+    async fn is_special_key(&self, stream_id: H256, key: H256, version: u64) -> Result<bool> {
+        self.stream_store
+            .is_special_key(stream_id, key, version)
+            .await
+    }
+
+    async fn is_writer_of_key(
+        &self,
+        account: H160,
+        stream_id: H256,
+        key: H256,
+        version: u64,
+    ) -> Result<bool> {
+        self.stream_store
+            .is_writer_of_key(account, stream_id, key, version)
+            .await
+    }
+
+    async fn is_writer_of_stream(
+        &self,
+        account: H160,
+        stream_id: H256,
+        version: u64,
+    ) -> Result<bool> {
+        self.stream_store
+            .is_writer_of_stream(account, stream_id, version)
+            .await
+    }
+
     async fn get_stream_key_value(
         &self,
         stream_id: H256,
