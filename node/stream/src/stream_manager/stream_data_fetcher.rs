@@ -1,5 +1,6 @@
 use crate::StreamConfig;
 use anyhow::{anyhow, bail, Result};
+use ethereum_types::H256;
 use jsonrpsee::http_client::HttpClient;
 use rpc::IonianRpcClient;
 use shared_types::{ChunkArray, DataRoot, Transaction};
@@ -31,6 +32,7 @@ pub struct StreamDataFetcher {
 async fn download_with_proof(
     client: HttpClient,
     data_merkle_root: DataRoot,
+    tx_hash: H256,
     tx_seq: u64,
     start_index: usize,
     end_index: usize,
@@ -74,8 +76,9 @@ async fn download_with_proof(
                     return;
                 }
 
-                if let Err(e) = store.write().await.put_chunks(
+                if let Err(e) = store.write().await.put_chunks_with_tx_hash(
                     tx_seq,
+                    tx_hash,
                     ChunkArray {
                         data: segment.data,
                         start_index: (segment.index * ENTRIES_PER_SEGMENT) as u64,
@@ -139,6 +142,7 @@ impl StreamDataFetcher {
         &self,
         client_index: &mut usize,
         data_merkle_root: DataRoot,
+        tx_hash: H256,
         tx_seq: u64,
         start_index: usize,
         end_index: usize,
@@ -153,6 +157,7 @@ impl StreamDataFetcher {
             download_with_proof(
                 self.clients[*client_index].clone(),
                 data_merkle_root,
+                tx_hash,
                 tx_seq,
                 start_index,
                 end_index,
@@ -202,6 +207,7 @@ impl StreamDataFetcher {
             self.spawn_download_task(
                 &mut client_index,
                 tx.data_merkle_root,
+                tx.hash(),
                 tx.seq,
                 start_index,
                 end_index,
@@ -219,6 +225,7 @@ impl StreamDataFetcher {
                             self.spawn_download_task(
                                 &mut client_index,
                                 tx.data_merkle_root,
+                                tx.hash(),
                                 tx.seq,
                                 start_index,
                                 end_index,
@@ -249,6 +256,7 @@ impl StreamDataFetcher {
                         self.spawn_download_task(
                             &mut client_index,
                             tx.data_merkle_root,
+                            tx.hash(),
                             tx.seq,
                             start_index,
                             end_index,
@@ -259,7 +267,10 @@ impl StreamDataFetcher {
             }
         }
 
-        self.store.write().await.finalize_tx(tx.seq)?;
+        self.store
+            .write()
+            .await
+            .finalize_tx_with_hash(tx.seq, tx.hash())?;
         Ok(())
     }
 
