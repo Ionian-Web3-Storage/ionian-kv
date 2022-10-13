@@ -128,6 +128,34 @@ class KVPutGetTest(TestFramework):
             self.next_tx_seq) == "DataParseError: Invalid stream data")
         self.next_tx_seq += 1
 
+        # write but permission denied
+        self.submit(MAX_U64, [], writes, [], tx_params=TX_PARAMS1)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "PermissionDenied")
+        self.next_tx_seq += 1
+
+        # check data
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value)
+
+        # overwrite
+        writes = []
+        reads = []
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            writes.append(rand_write(stream_id, key))
+            reads.append([stream_id, key])
+        self.submit(second_version, [], writes, [])
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        third_version = self.next_tx_seq
+        self.next_tx_seq += 1
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(
+                stream_id, key, value, third_version - 1)
+        self.update_data(writes)
         for stream_id_key, value in self.data.items():
             stream_id, key = stream_id_key.split(',')
             self.kv_nodes[0].check_equal(stream_id, key, value)
