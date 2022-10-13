@@ -15,7 +15,6 @@ use std::time::Duration;
 use task_executor::TaskExecutor;
 use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
 
-const LOG_PAGE_SIZE: u64 = 1000;
 // SHA256("STREAM")
 // df2ff3bb0af36c6384e6206552a4ed807f6f6a26e7d0aa6bff772ddc9d4307aa
 const STREAM_DOMAIN: H256 = H256([
@@ -26,15 +25,21 @@ const STREAM_DOMAIN: H256 = H256([
 pub struct LogEntryFetcher {
     contract_address: ContractAddress,
     provider: Arc<Provider<Http>>,
+    log_page_size: u64,
 }
 
 impl LogEntryFetcher {
-    pub async fn new(url: &str, contract_address: ContractAddress) -> Result<Self> {
+    pub async fn new(
+        url: &str,
+        contract_address: ContractAddress,
+        log_page_size: u64,
+    ) -> Result<Self> {
         let provider = Arc::new(Provider::try_from(url)?);
         // TODO: `error` types are removed from the ABI json file.
         Ok(Self {
             contract_address,
             provider,
+            log_page_size,
         })
     }
 
@@ -47,6 +52,7 @@ impl LogEntryFetcher {
         let provider = self.provider.clone();
         let (recover_tx, recover_rx) = tokio::sync::mpsc::unbounded_channel();
         let contract = IonianFlow::new(self.contract_address, provider.clone());
+        let log_page_size = self.log_page_size;
 
         executor.spawn(
             async move {
@@ -56,7 +62,7 @@ impl LogEntryFetcher {
                     .from_block(progress)
                     .to_block(end_block_number)
                     .filter;
-                let mut stream = provider.get_logs_paginated(&filter, LOG_PAGE_SIZE);
+                let mut stream = provider.get_logs_paginated(&filter, log_page_size);
                 debug!("start_recover starts, start={}", start_block_number);
                 while let Some(maybe_log) = stream.next().await {
                     match maybe_log {
@@ -96,7 +102,7 @@ impl LogEntryFetcher {
                         Err(e) => {
                             error!("log query error: e={:?}", e);
                             filter = filter.from_block(progress);
-                            stream = provider.get_logs_paginated(&filter, LOG_PAGE_SIZE);
+                            stream = provider.get_logs_paginated(&filter, log_page_size);
                             tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
                         }
                     }

@@ -1,7 +1,8 @@
 use super::{Client, RuntimeContext};
-use log_entry_sync::{LogSyncConfig, LogSyncManager};
+use log_entry_sync::{LogSyncConfig, LogSyncEvent, LogSyncManager};
 use rpc::HttpClient;
 use rpc::RPCConfig;
+use tokio::sync::broadcast;
 use std::sync::Arc;
 use storage_with_stream::log_store::log_manager::LogConfig;
 use storage_with_stream::Store;
@@ -18,28 +19,25 @@ macro_rules! require {
     };
 }
 
+struct LogSyncComponents {
+    send: broadcast::Sender<LogSyncEvent>,
+}
+
 /// Builds a `Client` instance.
 ///
 /// ## Notes
 ///
 /// The builder may start some services (e.g.., libp2p, http server) immediately after they are
 /// initialized, _before_ the `self.build(..)` method has been called.
+#[derive(Default)]
 pub struct ClientBuilder {
     runtime_context: Option<RuntimeContext>,
     store: Option<Arc<RwLock<dyn Store>>>,
     ionian_client: Option<HttpClient>,
+    log_sync: Option<LogSyncComponents>,
 }
 
 impl ClientBuilder {
-    /// Instantiates a new, empty builder.
-    pub fn new() -> Self {
-        Self {
-            runtime_context: None,
-            store: None,
-            ionian_client: None,
-        }
-    }
-
     /// Specifies the runtime context (tokio executor, logger, etc) for client services.
     pub fn with_runtime_context(mut self, context: RuntimeContext) -> Self {
         self.runtime_context = Some(context);
@@ -118,12 +116,13 @@ impl ClientBuilder {
         Ok(self)
     }
 
-    pub async fn with_log_sync(self, config: LogSyncConfig) -> Result<Self, String> {
+    pub async fn with_log_sync(mut self, config: LogSyncConfig) -> Result<Self, String> {
         let executor = require!("log_sync", self, runtime_context).clone().executor;
         let store = require!("log_sync", self, store).clone();
-        LogSyncManager::spawn(config, executor, store)
+        let send = LogSyncManager::spawn(config, executor, store)
             .await
             .map_err(|e| e.to_string())?;
+        self.log_sync = Some(LogSyncComponents { send });
         Ok(self)
     }
 

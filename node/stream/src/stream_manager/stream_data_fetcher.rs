@@ -56,8 +56,9 @@ impl StreamDataFetcher {
                     }
 
                     segment.validate(ENTRIES_PER_SEGMENT)?;
-                    self.store.write().await.put_chunks(
+                    self.store.write().await.put_chunks_with_tx_hash(
                         tx.seq,
+                        tx.hash(),
                         ChunkArray {
                             data: segment.data,
                             start_index: (segment.index * ENTRIES_PER_SEGMENT) as u64,
@@ -126,7 +127,7 @@ impl StreamDataFetcher {
                 task.await?;
             }
         }
-        self.store.write().await.finalize_tx(tx.seq)?;
+        self.store.write().await.finalize_tx_with_hash(tx.seq, tx.hash())?;
         Ok(())
     }
 
