@@ -16,7 +16,7 @@ async fn start_node(context: RuntimeContext, config: IonianKVConfig) -> Result<C
     let log_sync_config = config.log_sync_config()?;
     let stream_config = config.stream_config()?;
 
-    ClientBuilder::new()
+    ClientBuilder::default()
         .with_runtime_context(context)
         .with_rocksdb_store(&storage_config)
         .await?

@@ -71,6 +71,7 @@ impl IonianKVConfig {
             self.log_sync_start_block_number,
             self.confirmation_block_count,
             cache_config,
+            self.log_page_size,
         ))
     }
 }

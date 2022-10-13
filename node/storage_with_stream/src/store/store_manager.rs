@@ -42,6 +42,15 @@ impl LogStoreChunkWrite for StoreManager {
     fn remove_all_chunks(&self, tx_seq: u64) -> crate::error::Result<()> {
         self.log_store.remove_all_chunks(tx_seq)
     }
+
+    fn put_chunks_with_tx_hash(
+        &mut self,
+        tx_seq: u64,
+        tx_hash: H256,
+        chunks: ChunkArray,
+    ) -> storage::error::Result<bool> {
+        self.log_store.put_chunks_with_tx_hash(tx_seq, tx_hash, chunks)
+    }
 }
 
 impl LogStoreWrite for StoreManager {
@@ -52,6 +61,10 @@ impl LogStoreWrite for StoreManager {
 
     fn finalize_tx(&mut self, tx_seq: u64) -> Result<()> {
         self.log_store.finalize_tx(tx_seq)
+    }
+
+    fn finalize_tx_with_hash(&mut self, tx_seq: u64, tx_hash: H256) -> storage::error::Result<bool> {
+        self.log_store.finalize_tx_with_hash(tx_seq, tx_hash)
     }
 
     fn put_sync_progress(&self, progress: (u64, H256)) -> Result<()> {
