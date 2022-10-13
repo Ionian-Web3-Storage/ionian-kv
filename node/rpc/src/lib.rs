@@ -31,8 +31,12 @@ pub struct Context {
     pub store: Arc<RwLock<dyn Store>>,
 }
 
-pub fn ionian_client(ctx: &Context) -> Result<HttpClient, Box<dyn Error>> {
-    Ok(HttpClientBuilder::default().build(&ctx.config.ionian_node_url)?)
+pub fn ionian_clients(ctx: &Context) -> Result<Vec<HttpClient>, Box<dyn Error>> {
+    ctx.config
+        .ionian_nodes
+        .iter()
+        .map(|url| Ok(HttpClientBuilder::default().build(url)?))
+        .collect()
 }
 
 pub async fn run_server(ctx: Context) -> Result<HttpServerHandle, Box<dyn Error>> {

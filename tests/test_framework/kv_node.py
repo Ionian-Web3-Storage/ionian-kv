@@ -31,7 +31,7 @@ class KVNode(TestNode):
             "rpc_listen_address": f"127.0.0.1:{kv_rpc_port(index)}",
             "log_contract_address": log_contract_address,
             "blockchain_rpc_endpoint": f"http://127.0.0.1:{blockchain_rpc_port(0)}",
-            "ionian_node_url": f"http://127.0.0.1:{rpc_port(0)}"
+            "ionian_node_urls": f"http://127.0.0.1:{rpc_port(0)}"
         }
         # Set configs for this specific node.
         local_conf.update(indexed_config)

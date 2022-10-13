@@ -4,6 +4,7 @@ use std::{collections::HashSet, str::FromStr};
 
 use crate::IonianKVConfig;
 use ethereum_types::H256;
+use http::Uri;
 use log_entry_sync::{CacheConfig, ContractAddress, LogSyncConfig};
 use rpc::RPCConfig;
 use storage_with_stream::{LogStorageConfig, StorageConfig};
@@ -49,7 +50,8 @@ impl IonianKVConfig {
             enabled: self.rpc_enabled,
             listen_address,
             chunks_per_segment: self.rpc_chunks_per_segment,
-            ionian_node_url: self.ionian_node_url.clone(),
+            ionian_nodes: to_ionian_nodes(self.ionian_node_urls.clone())
+                .map_err(|e| format!("failed to parse ionian_node_urls: {}", e))?,
             max_query_len_in_bytes: self.max_query_len_in_bytes,
         })
     }
@@ -73,4 +75,20 @@ impl IonianKVConfig {
             cache_config,
         ))
     }
+}
+
+pub fn to_ionian_nodes(ionian_node_urls: String) -> Result<Vec<String>, String> {
+    if ionian_node_urls.is_empty() {
+        return Err("ionian_node_urls is empty".to_string());
+    }
+
+    ionian_node_urls
+        .split(',')
+        .map(|url| {
+            url.parse::<Uri>()
+                .map_err(|e| format!("Invalid URL: {}", e))?;
+
+            Ok(url.to_owned())
+        })
+        .collect()
 }

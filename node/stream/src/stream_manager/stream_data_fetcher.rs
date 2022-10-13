@@ -2,10 +2,19 @@ use crate::StreamConfig;
 use anyhow::{anyhow, bail, Result};
 use jsonrpsee::http_client::HttpClient;
 use rpc::IonianRpcClient;
-use shared_types::{ChunkArray, Transaction};
-use std::{cmp, sync::Arc, time::Duration};
+use shared_types::{ChunkArray, DataRoot, Transaction};
+use std::{
+    cmp,
+    collections::{HashMap, VecDeque},
+    sync::Arc,
+    time::Duration,
+};
 use storage_with_stream::{log_store::log_manager::ENTRY_SIZE, Store};
-use tokio::sync::RwLock;
+use task_executor::TaskExecutor;
+use tokio::sync::{
+    mpsc::{self, UnboundedSender},
+    RwLock,
+};
 
 const RETRY_WAIT_MS: u64 = 1000;
 const ENTRIES_PER_SEGMENT: usize = 1024;
@@ -15,80 +24,146 @@ const ALERT_CNT: i32 = 10;
 pub struct StreamDataFetcher {
     config: StreamConfig,
     store: Arc<RwLock<dyn Store>>,
+    clients: Vec<HttpClient>,
+    task_executor: TaskExecutor,
+}
+
+async fn download_with_proof(
     client: HttpClient,
+    data_merkle_root: DataRoot,
+    tx_seq: u64,
+    start_index: usize,
+    end_index: usize,
+    store: Arc<RwLock<dyn Store>>,
+    sender: UnboundedSender<Result<(), (usize, usize, bool)>>,
+) {
+    let mut fail_cnt = 0;
+    while fail_cnt < ALERT_CNT {
+        debug!("download_with_proof for {}", start_index);
+        match client
+            .download_segment_with_proof(data_merkle_root, start_index / ENTRIES_PER_SEGMENT)
+            .await
+        {
+            Ok(Some(segment)) => {
+                if segment.data.len() % ENTRY_SIZE != 0
+                    || segment.data.len() / ENTRY_SIZE != end_index - start_index
+                {
+                    debug!("invalid data length");
+                    if let Err(e) = sender.send(Err((start_index, end_index, true))) {
+                        error!("send error: {:?}", e);
+                    }
+
+                    return;
+                }
+
+                if segment.root != data_merkle_root {
+                    debug!("invalid file root");
+                    if let Err(e) = sender.send(Err((start_index, end_index, true))) {
+                        error!("send error: {:?}", e);
+                    }
+
+                    return;
+                }
+
+                if let Err(e) = segment.validate(ENTRIES_PER_SEGMENT) {
+                    debug!("validate segment with error: {:?}", e);
+
+                    if let Err(e) = sender.send(Err((start_index, end_index, true))) {
+                        error!("send error: {:?}", e);
+                    }
+                    return;
+                }
+
+                if let Err(e) = store.write().await.put_chunks(
+                    tx_seq,
+                    ChunkArray {
+                        data: segment.data,
+                        start_index: (segment.index * ENTRIES_PER_SEGMENT) as u64,
+                    },
+                ) {
+                    debug!("put segment with error: {:?}", e);
+
+                    if let Err(e) = sender.send(Err((start_index, end_index, true))) {
+                        error!("send error: {:?}", e);
+                    }
+                    return;
+                }
+
+                debug!("download start_index {:?} successful", start_index);
+                if let Err(e) = sender.send(Ok(())) {
+                    error!("send error: {:?}", e);
+                }
+
+                return;
+            }
+            Ok(None) => {
+                debug!(
+                    "start_index {:?}, end_index {:?}, response is none",
+                    start_index, end_index
+                );
+                fail_cnt += 1;
+                tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
+            }
+            Err(e) => {
+                debug!(
+                    "start_index {:?}, end_index {:?}, response error: {:?}",
+                    start_index, end_index, e
+                );
+                fail_cnt += 1;
+                tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
+            }
+        }
+    }
+
+    if let Err(e) = sender.send(Err((start_index, end_index, false))) {
+        error!("send error: {:?}", e);
+    }
 }
 
 impl StreamDataFetcher {
     pub async fn new(
         config: StreamConfig,
         store: Arc<RwLock<dyn Store>>,
-        client: HttpClient,
+        clients: Vec<HttpClient>,
+        task_executor: TaskExecutor,
     ) -> Result<Self> {
         Ok(Self {
             config,
             store,
-            client,
+            clients,
+            task_executor,
         })
     }
 
-    async fn download_with_proof(
+    fn spawn_download_task(
         &self,
-        tx: &Transaction,
+        client_index: &mut usize,
+        data_merkle_root: DataRoot,
+        tx_seq: u64,
         start_index: usize,
         end_index: usize,
-    ) -> Result<()> {
-        let mut fail_cnt = 0;
-        loop {
-            match self
-                .client
-                .download_segment_with_proof(tx.data_merkle_root, start_index / ENTRIES_PER_SEGMENT)
-                .await
-            {
-                Ok(Some(segment)) => {
-                    if segment.data.len() % ENTRY_SIZE != 0
-                        || segment.data.len() / ENTRY_SIZE != end_index - start_index
-                    {
-                        bail!(anyhow!("invalid data length"));
-                    }
+        sender: &UnboundedSender<Result<(), (usize, usize, bool)>>,
+    ) {
+        debug!(
+            "downloading start_index {:?}, end_index: {:?}",
+            start_index, end_index
+        );
 
-                    if segment.root != tx.data_merkle_root {
-                        bail!(anyhow!("invalid file root"));
-                    }
+        self.task_executor.spawn(
+            download_with_proof(
+                self.clients[*client_index].clone(),
+                data_merkle_root,
+                tx_seq,
+                start_index,
+                end_index,
+                self.store.clone(),
+                sender.clone(),
+            ),
+            "download segment",
+        );
 
-                    segment.validate(ENTRIES_PER_SEGMENT)?;
-                    self.store.write().await.put_chunks(
-                        tx.seq,
-                        ChunkArray {
-                            data: segment.data,
-                            start_index: (segment.index * ENTRIES_PER_SEGMENT) as u64,
-                        },
-                    )?;
-                    return Ok(());
-                }
-                Ok(None) => {
-                    debug!(
-                        "start_index {:?}, end_index {:?}, response is none",
-                        start_index, end_index
-                    );
-                    fail_cnt += 1;
-                    tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
-                }
-                Err(e) => {
-                    debug!(
-                        "start_index {:?}, end_index {:?}, response error: {:?}",
-                        start_index, end_index, e
-                    );
-                    fail_cnt += 1;
-                    tokio::time::sleep(Duration::from_millis(RETRY_WAIT_MS)).await;
-                }
-            }
-            if fail_cnt % ALERT_CNT == 0 {
-                warn!(
-                    "Download data of tx_seq {:?}, start_index {:?}, end_index {:?}, failed for {:?} times",
-                    tx.seq, start_index, end_index, fail_cnt
-                );
-            }
-        }
+        // round robin client
+        *client_index = (*client_index + 1) % self.clients.len();
     }
 
     async fn sync_data(&self, tx: &Transaction) -> Result<()> {
@@ -100,8 +175,13 @@ impl StreamDataFetcher {
         } else {
             tx.size / ENTRY_SIZE as u64 + 1
         };
+
+        let mut pending_entries = VecDeque::new();
+        let mut task_counter = 0;
+        let mut client_index = 0;
+        let (sender, mut rx) = mpsc::unbounded_channel();
+
         for i in (0..tx_size_in_entry).step_by(ENTRIES_PER_SEGMENT * MAX_DOWNLOAD_TASK) {
-            let mut tasks = vec![];
             let tasks_end_index = cmp::min(
                 tx_size_in_entry,
                 i + (ENTRIES_PER_SEGMENT * MAX_DOWNLOAD_TASK) as u64,
@@ -112,20 +192,73 @@ impl StreamDataFetcher {
             );
             for j in (i..tasks_end_index).step_by(ENTRIES_PER_SEGMENT) {
                 let task_end_index = cmp::min(tasks_end_index, j + ENTRIES_PER_SEGMENT as u64);
-                debug!(
-                    "downloading start_index {:?}, end_index: {:?}",
-                    j, task_end_index
-                );
-                tasks.push(Box::pin(self.download_with_proof(
-                    tx,
-                    j as usize,
-                    task_end_index as usize,
-                )));
-            }
-            for task in tasks.into_iter() {
-                task.await?;
+                pending_entries.push_back((j as usize, task_end_index as usize));
             }
         }
+
+        // spawn download tasks
+        while task_counter < MAX_DOWNLOAD_TASK && !pending_entries.is_empty() {
+            let (start_index, end_index) = pending_entries.pop_front().unwrap();
+            self.spawn_download_task(
+                &mut client_index,
+                tx.data_merkle_root,
+                tx.seq,
+                start_index,
+                end_index,
+                &sender,
+            );
+            task_counter += 1;
+        }
+
+        let mut failed_tasks = HashMap::new();
+        while task_counter > 0 {
+            if let Some(ret) = rx.recv().await {
+                match ret {
+                    Ok(_) => {
+                        if let Some((start_index, end_index)) = pending_entries.pop_front() {
+                            self.spawn_download_task(
+                                &mut client_index,
+                                tx.data_merkle_root,
+                                tx.seq,
+                                start_index,
+                                end_index,
+                                &sender,
+                            );
+                        } else {
+                            task_counter -= 1;
+                        }
+                    }
+                    Err((start_index, end_index, data_err)) => {
+                        warn!("Download data of tx_seq {:?}, start_index {:?}, end_index {:?}, failed",tx.seq, start_index, end_index);
+
+                        match failed_tasks.get_mut(&start_index) {
+                            Some(c) => {
+                                if data_err {
+                                    *c += 1;
+                                }
+
+                                if *c == self.clients.len() * MAX_DOWNLOAD_TASK {
+                                    bail!(anyhow!(format!("Download segment failed, start_index {:?}, end_index: {:?}", start_index, end_index)));
+                                }
+                            }
+                            _ => {
+                                failed_tasks.insert(start_index, 1);
+                            }
+                        }
+
+                        self.spawn_download_task(
+                            &mut client_index,
+                            tx.data_merkle_root,
+                            tx.seq,
+                            start_index,
+                            end_index,
+                            &sender,
+                        );
+                    }
+                }
+            }
+        }
+
         self.store.write().await.finalize_tx(tx.seq)?;
         Ok(())
     }
