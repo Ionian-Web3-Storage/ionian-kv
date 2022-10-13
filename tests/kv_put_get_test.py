@@ -27,7 +27,8 @@ class KVPutGetTest(TestFramework):
         self.stream_ids.reverse()
         self.setup_kv_node(0, self.stream_ids)
         self.stream_ids.reverse()
-        assert_equal([x[2:] for x in self.kv_nodes[0].kv_get_holding_stream_ids()], self.stream_ids)
+        assert_equal(
+            [x[2:] for x in self.kv_nodes[0].kv_get_holding_stream_ids()], self.stream_ids)
 
         # tx_seq and data mapping
         self.next_tx_seq = 0
@@ -35,12 +36,16 @@ class KVPutGetTest(TestFramework):
         # write empty stream
         self.write_streams()
 
-    def submit(self, version, reads, writes, access_controls, tx_params = TX_PARAMS):
+    def submit(self, version, reads, writes, access_controls, tx_params=TX_PARAMS, given_tags=None, trunc=False):
         chunk_data, tags = create_kv_data(
             version, reads, writes, access_controls)
-        submissions, data_root = create_submission(chunk_data, tags)
+        if trunc:
+            chunk_data = chunk_data[:random.randrange(
+                len(chunk_data) / 2, len(chunk_data))]
+        submissions, data_root = create_submission(
+            chunk_data, tags if given_tags is None else given_tags)
         self.log.info("data root: %s, submissions: %s", data_root, submissions)
-        self.contract.submit(submissions, tx_params = tx_params)
+        self.contract.submit(submissions, tx_params=tx_params)
         wait_until(lambda: self.contract.num_submissions()
                    == self.next_tx_seq + 1)
 
@@ -64,6 +69,7 @@ class KVPutGetTest(TestFramework):
         self.submit(MAX_U64, [], writes, [])
         wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
             self.next_tx_seq) == "Commit")
+        first_version = self.next_tx_seq
         self.next_tx_seq += 1
 
         # check data and admin role
@@ -71,7 +77,89 @@ class KVPutGetTest(TestFramework):
         for stream_id_key, value in self.data.items():
             stream_id, key = stream_id_key.split(',')
             self.kv_nodes[0].check_equal(stream_id, key, value)
-            assert_equal(self.kv_nodes[0].kv_is_admin(GENESIS_ACCOUNT.address, stream_id), True)
+            assert_equal(self.kv_nodes[0].kv_is_admin(
+                GENESIS_ACCOUNT.address, stream_id), True)
+
+        # overwrite
+        writes = []
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            writes.append(rand_write(stream_id, key))
+        self.submit(first_version, [], writes, [])
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        second_version = self.next_tx_seq
+        self.next_tx_seq += 1
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value, first_version)
+        self.update_data(writes)
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value, second_version)
+
+        # write but conflict
+        writes = []
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            writes.append(rand_write(stream_id, key))
+        self.submit(first_version, [], writes, [])
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "VersionConfliction")
+        self.next_tx_seq += 1
+
+        writes = writes[:1]
+        reads = []
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            reads.append([stream_id, key])
+        self.submit(first_version, reads, writes, [])
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "VersionConfliction")
+        self.next_tx_seq += 1
+
+        # write but invalid format
+        writes = []
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            writes.append(rand_write(stream_id, key))
+        self.submit(MAX_U64, [], writes, [], trunc=True)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "DataParseError: Invalid stream data")
+        self.next_tx_seq += 1
+
+        # write but permission denied
+        self.submit(MAX_U64, [], writes, [], tx_params=TX_PARAMS1)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "PermissionDenied")
+        self.next_tx_seq += 1
+
+        # check data
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value)
+
+        # overwrite
+        writes = []
+        reads = []
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            writes.append(rand_write(stream_id, key))
+            reads.append([stream_id, key])
+        self.submit(second_version, [], writes, [])
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        third_version = self.next_tx_seq
+        self.next_tx_seq += 1
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(
+                stream_id, key, value, third_version - 1)
+        self.update_data(writes)
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value)
+
 
 if __name__ == "__main__":
     KVPutGetTest().main()

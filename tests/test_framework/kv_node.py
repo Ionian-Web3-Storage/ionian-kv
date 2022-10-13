@@ -69,17 +69,20 @@ class KVNode(TestNode):
 
     def check_equal(self, stream_id, key, value, version=None):
         i = 0
+        bytes_per_query = 1024 * 256
         while i < len(value):
-            res = self.kv_get_value(stream_id, key, i, 1000, version)
-            if i + 1000 < len(value):
+            self.rpc_cnt += 1
+            res = self.kv_get_value(
+                stream_id, key, i, bytes_per_query, version)
+            if i + bytes_per_query < len(value):
                 assert_equal(base64.b64decode(
                     res['data'].encode("utf-8")
-                ), value[i: i + 1000])
+                ), value[i: i + bytes_per_query])
             else:
                 assert_equal(base64.b64decode(
                     res['data'].encode("utf-8")
                 ), value[i:])
-            i += 1000
+            i += bytes_per_query
 
     # rpc
     def kv_get_value(self, stream_id, key, start_index, size, version=None):
@@ -89,7 +92,7 @@ class KVNode(TestNode):
         return self.rpc.kv_getTransactionResult([tx_seq])
 
     def kv_get_holding_stream_ids(self):
-        return self.rpc.kv_getHoldingStreamIds() 
+        return self.rpc.kv_getHoldingStreamIds()
 
     def kv_has_write_permission(self, account, stream_id, key, version=None):
         return self.rpc.kv_hasWritePermission([account, stream_id, key, version])
