@@ -51,7 +51,7 @@ impl SqliteDBStatements {
             t_access_control 
         WHERE 
             stream_id = :stream_id AND key = :key AND 
-            version < :version AND op_type in ({}, {})
+            version <= :version AND op_type in ({}, {})
         ORDER BY version DESC LIMIT 1",
         AccessControlOps::SET_KEY_TO_SPECIAL,
         AccessControlOps::SET_KEY_TO_NORMAL,
@@ -63,7 +63,7 @@ impl SqliteDBStatements {
             t_access_control
         WHERE
             stream_id = :stream_id AND account = :account AND
-            version < :version AND op_type in ({}, {})
+            version <= :version AND op_type in ({}, {})
         ORDER BY version DESC LIMIT 1",
         AccessControlOps::GRANT_ADMIN_ROLE,
         AccessControlOps::RENOUNCE_ADMIN_ROLE
@@ -75,7 +75,7 @@ impl SqliteDBStatements {
             t_access_control
         WHERE
             stream_id = :stream_id AND key = :key AND
-            account = :account AND version < :version AND
+            account = :account AND version <= :version AND
             op_type in ({}, {}, {})
         ORDER BY version DESC LIMIT 1
     ",
@@ -90,7 +90,7 @@ impl SqliteDBStatements {
             t_access_control
         WHERE
             stream_id = :stream_id AND account = :account AND 
-            version < :version AND op_type in ({}, {}, {})
+            version <= :version AND op_type in ({}, {}, {})
         ORDER BY version DESC LIMIT 1
     ",
         AccessControlOps::GRANT_WRITER_ROLE,
@@ -123,7 +123,7 @@ impl SqliteDBStatements {
             t_stream
         WHERE 
             stream_id = :stream_id AND key = :key AND
-            version < :version
+            version <= :version
         ORDER BY version DESC LIMIT 1
     ";
 
