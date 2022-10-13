@@ -221,7 +221,7 @@ impl StreamStore {
                     }
                     Ok(true)
                 } else {
-                    bail!("unexpected empty rows");
+                    bail!("is_new_stream: unexpected empty rows");
                 }
             })
             .await
@@ -244,7 +244,7 @@ impl StreamStore {
                         AccessControlOps::SET_KEY_TO_NORMAL => Ok(false),
                         AccessControlOps::SET_KEY_TO_SPECIAL => Ok(true),
                         _ => {
-                            bail!("unexpected access control op type");
+                            bail!("is_special_key: unexpected access control op type");
                         }
                     }
                 } else {
@@ -267,14 +267,19 @@ impl StreamStore {
                     |row| row.get(0),
                 )?;
                 if let Some(raw_data) = rows.next() {
-                    let num: u64 = raw_data?;
-                    if num > 0 {
-                        return Ok(false);
+                    match raw_data? {
+                        AccessControlOps::GRANT_ADMIN_ROLE => {
+                            return Ok(true);
+                        }
+                        AccessControlOps::RENOUNCE_ADMIN_ROLE => {
+                            return Ok(false);
+                        }
+                        _ => {
+                            bail!("is_admin: unexpected access control type");
+                        }
                     }
-                    Ok(true)
-                } else {
-                    bail!("unexpected empty rows");
                 }
+                Ok(false)
             })
             .await
     }
@@ -300,16 +305,15 @@ impl StreamStore {
                 )?;
                 if let Some(raw_data) = rows.next() {
                     match raw_data? {
-                        AccessControlOps::GRANT_SPECIAL_WRITER_ROLE => Ok(true),
+                        AccessControlOps::GRANT_SPECIAL_WRITER_ROLE => { return Ok(true);},
                         AccessControlOps::REVOKE_SPECIAL_WRITER_ROLE
-                        | AccessControlOps::RENOUNCE_SPECIAL_WRITER_ROLE => Ok(false),
+                        | AccessControlOps::RENOUNCE_SPECIAL_WRITER_ROLE => {return Ok(false)},
                         _ => {
-                            bail!("unexpected access control op type");
+                            bail!("is_writer_of_key: unexpected access control op type");
                         }
                     }
-                } else {
-                    bail!("unexpected empty rows");
-                }
+                };
+                Ok(false)
             })
             .await
     }
@@ -333,15 +337,15 @@ impl StreamStore {
                 )?;
                 if let Some(raw_data) = rows.next() {
                     match raw_data? {
-                        AccessControlOps::GRANT_WRITER_ROLE => Ok(true),
+                        AccessControlOps::GRANT_WRITER_ROLE => {return Ok(true)},
                         AccessControlOps::REVOKE_WRITER_ROLE
-                        | AccessControlOps::RENOUNCE_WRITER_ROLE => Ok(false),
+                        | AccessControlOps::RENOUNCE_WRITER_ROLE => {return Ok(false)},
                         _ => {
-                            bail!("unexpected access control op type");
+                            bail!("is_writer_of_stream: unexpected access control op type");
                         }
                     }
                 } else {
-                    bail!("unexpected empty rows");
+                    Ok(false)
                 }
             })
             .await
