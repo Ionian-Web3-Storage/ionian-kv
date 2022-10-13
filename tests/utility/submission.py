@@ -92,7 +92,8 @@ def create_node(data, offset, chunks):
     if chunks > PORA_CHUNK_SIZE:
         batch = PORA_CHUNK_SIZE
 
-    return create_segment_node(data, offset, ENTRY_SIZE * batch, ENTRY_SIZE * chunks)
+    return create_segment_node(
+        data, offset, ENTRY_SIZE * batch, ENTRY_SIZE * chunks)
 
 
 def create_segment_node(data, offset, batch, size):

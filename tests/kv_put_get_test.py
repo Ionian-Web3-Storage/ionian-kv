@@ -27,7 +27,8 @@ class KVPutGetTest(TestFramework):
         self.stream_ids.reverse()
         self.setup_kv_node(0, self.stream_ids)
         self.stream_ids.reverse()
-        assert_equal([x[2:] for x in self.kv_nodes[0].kv_get_holding_stream_ids()], self.stream_ids)
+        assert_equal(
+            [x[2:] for x in self.kv_nodes[0].kv_get_holding_stream_ids()], self.stream_ids)
 
         # tx_seq and data mapping
         self.next_tx_seq = 0
@@ -35,12 +36,12 @@ class KVPutGetTest(TestFramework):
         # write empty stream
         self.write_streams()
 
-    def submit(self, version, reads, writes, access_controls, tx_params = TX_PARAMS):
+    def submit(self, version, reads, writes, access_controls, tx_params=TX_PARAMS):
         chunk_data, tags = create_kv_data(
             version, reads, writes, access_controls)
         submissions, data_root = create_submission(chunk_data, tags)
         self.log.info("data root: %s, submissions: %s", data_root, submissions)
-        self.contract.submit(submissions, tx_params = tx_params)
+        self.contract.submit(submissions, tx_params=tx_params)
         wait_until(lambda: self.contract.num_submissions()
                    == self.next_tx_seq + 1)
 
@@ -64,6 +65,7 @@ class KVPutGetTest(TestFramework):
         self.submit(MAX_U64, [], writes, [])
         wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
             self.next_tx_seq) == "Commit")
+        first_version = self.next_tx_seq
         self.next_tx_seq += 1
 
         # check data and admin role
@@ -71,7 +73,30 @@ class KVPutGetTest(TestFramework):
         for stream_id_key, value in self.data.items():
             stream_id, key = stream_id_key.split(',')
             self.kv_nodes[0].check_equal(stream_id, key, value)
-            assert_equal(self.kv_nodes[0].kv_is_admin(GENESIS_ACCOUNT.address, stream_id), True)
+            assert_equal(self.kv_nodes[0].kv_is_admin(
+                GENESIS_ACCOUNT.address, stream_id), True)
+
+        # overwrite
+        writes = []
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            writes.append(rand_write(stream_id, key))
+        self.submit(first_version, [], writes, [])
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        second_version = self.next_tx_seq
+        self.next_tx_seq += 1
+        i = 0
+        for stream_id_key, value in self.data.items():
+            i += 1
+            print("{}, {}", i, first_version)
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value, first_version)
+        self.update_data(writes)
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value, second_version)
+
 
 if __name__ == "__main__":
     KVPutGetTest().main()

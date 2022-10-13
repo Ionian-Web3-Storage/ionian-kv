@@ -42,7 +42,8 @@ def kv_rpc_port(n):
     return PortMin.n + 5 * MAX_NODES + n
 
 
-def wait_until(predicate, *, attempts=float("inf"), timeout=float("inf"), lock=None):
+def wait_until(predicate, *, attempts=float("inf"),
+               timeout=float("inf"), lock=None):
     if attempts == float("inf") and timeout == float("inf"):
         timeout = 60
     attempt = 0
