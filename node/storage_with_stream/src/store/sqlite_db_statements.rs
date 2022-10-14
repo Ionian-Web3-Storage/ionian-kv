@@ -110,9 +110,9 @@ impl SqliteDBStatements {
 
     pub const PUT_ACCESS_CONTROL_STATEMENT: &'static str = "
         INSERT OR REPLACE INTO
-            t_access_control (stream_id, key, version, account, op_type)
+            t_access_control (stream_id, key, version, account, op_type, operator)
         VALUES
-            (:stream_id, :key, :version, :account, :op_type)
+            (:stream_id, :key, :version, :account, :op_type, :operator)
     ";
 
     pub const DELETE_ACCESS_CONTROL_STATEMENT: &'static str =
@@ -158,7 +158,8 @@ impl SqliteDBStatements {
             key BLOB,
             version INTEGER NOT NULL,
             account BLOB,
-            op_type INTEGER NOT NULL
+            op_type INTEGER NOT NULL,
+            operator BLOB NOT NULL
         )
     ";
 

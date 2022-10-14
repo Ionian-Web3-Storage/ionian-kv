@@ -305,9 +305,11 @@ impl StreamStore {
                 )?;
                 if let Some(raw_data) = rows.next() {
                     match raw_data? {
-                        AccessControlOps::GRANT_SPECIAL_WRITER_ROLE => { return Ok(true);},
+                        AccessControlOps::GRANT_SPECIAL_WRITER_ROLE => {
+                            return Ok(true);
+                        }
                         AccessControlOps::REVOKE_SPECIAL_WRITER_ROLE
-                        | AccessControlOps::RENOUNCE_SPECIAL_WRITER_ROLE => {return Ok(false)},
+                        | AccessControlOps::RENOUNCE_SPECIAL_WRITER_ROLE => return Ok(false),
                         _ => {
                             bail!("is_writer_of_key: unexpected access control op type");
                         }
@@ -337,9 +339,9 @@ impl StreamStore {
                 )?;
                 if let Some(raw_data) = rows.next() {
                     match raw_data? {
-                        AccessControlOps::GRANT_WRITER_ROLE => {return Ok(true)},
+                        AccessControlOps::GRANT_WRITER_ROLE => return Ok(true),
                         AccessControlOps::REVOKE_WRITER_ROLE
-                        | AccessControlOps::RENOUNCE_WRITER_ROLE => {return Ok(false)},
+                        | AccessControlOps::RENOUNCE_WRITER_ROLE => return Ok(false),
                         _ => {
                             bail!("is_writer_of_stream: unexpected access control op type");
                         }
@@ -417,6 +419,7 @@ impl StreamStore {
                                 ":version": convert_to_i64(version),
                                 ":account": access_control.account.as_ssz_bytes(),
                                 ":op_type": access_control.op_type,
+                                ":operator": access_control.operator.as_ssz_bytes(),
                             },
                         )?;
                     }

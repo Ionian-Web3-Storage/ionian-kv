@@ -307,6 +307,7 @@ pub struct AccessControl {
     pub stream_id: H256,
     pub key: H256,
     pub account: H160,
+    pub operator: H160,
 }
 
 impl TryFrom<&FileProof> for RawFileProof<[u8; 32]> {

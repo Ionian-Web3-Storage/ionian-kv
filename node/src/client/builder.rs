@@ -2,12 +2,12 @@ use super::{Client, RuntimeContext};
 use log_entry_sync::{LogSyncConfig, LogSyncEvent, LogSyncManager};
 use rpc::HttpClient;
 use rpc::RPCConfig;
-use tokio::sync::broadcast;
 use std::sync::Arc;
 use storage_with_stream::log_store::log_manager::LogConfig;
 use storage_with_stream::Store;
 use storage_with_stream::{StorageConfig, StoreManager};
 use stream::{StreamConfig, StreamManager};
+use tokio::sync::broadcast;
 use tokio::sync::RwLock;
 
 macro_rules! require {

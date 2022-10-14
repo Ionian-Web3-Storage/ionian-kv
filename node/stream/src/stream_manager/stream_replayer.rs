@@ -33,7 +33,8 @@ enum ReplayResult {
     DataParseError(String),
     VersionConfliction,
     TagsMismatch,
-    PermissionDenied,
+    WritePermissionDenied,
+    AccessControlPermissionDenied,
     DataUnavailable,
 }
 
@@ -44,7 +45,10 @@ impl fmt::Display for ReplayResult {
             ReplayResult::DataParseError(e) => write!(f, "DataParseError: {}", e),
             ReplayResult::VersionConfliction => write!(f, "VersionConfliction"),
             ReplayResult::TagsMismatch => write!(f, "TagsMismatch"),
-            ReplayResult::PermissionDenied => write!(f, "PermissionDenied"),
+            ReplayResult::WritePermissionDenied => write!(f, "WritePermissionDenied"),
+            ReplayResult::AccessControlPermissionDenied => {
+                write!(f, "AccessControlPermissionDenied")
+            }
             ReplayResult::DataUnavailable => write!(f, "DataUnavailable"),
         }
     }
@@ -264,7 +268,7 @@ impl StreamReplayer {
                 .has_write_permission(tx.sender, stream_write.stream_id, stream_write.key, version)
                 .await?)
             {
-                return Ok(Some(ReplayResult::PermissionDenied));
+                return Ok(Some(ReplayResult::WritePermissionDenied));
             }
         }
         Ok(None)
@@ -342,6 +346,7 @@ impl StreamReplayer {
                         stream_id,
                         key,
                         account,
+                        operator: tx.sender,
                     },
                 );
             }
@@ -355,22 +360,22 @@ impl StreamReplayer {
         &self,
         access_control_set: &mut AccessControlSet,
         tx: &Transaction,
-        version: u64,
     ) -> Result<Option<ReplayResult>> {
         // pad GRANT_ADMIN_ROLE prefix to handle the first write to new stream
         let mut with_prefix_grant_admin_role = vec![];
         let mut is_admin = HashSet::new();
         let store_read = self.store.read().await;
         for id in &tx.stream_ids {
-            if store_read.is_new_stream(*id, version).await? {
+            if store_read.is_new_stream(*id, tx.seq).await? {
                 with_prefix_grant_admin_role.push(AccessControl {
                     op_type: AccessControlOps::GRANT_ADMIN_ROLE,
                     stream_id: *id,
                     key: H256::zero(),
                     account: tx.sender,
+                    operator: H160::zero(),
                 });
                 is_admin.insert(*id);
-            } else if store_read.is_admin(tx.sender, *id, version).await? {
+            } else if store_read.is_admin(tx.sender, *id, tx.seq).await? {
                 is_admin.insert(*id);
             }
         }
@@ -392,7 +397,7 @@ impl StreamReplayer {
                 | AccessControlOps::GRANT_SPECIAL_WRITER_ROLE
                 | AccessControlOps::REVOKE_SPECIAL_WRITER_ROLE => {
                     if !is_admin.contains(&access_control.stream_id) {
-                        return Ok(Some(ReplayResult::PermissionDenied));
+                        return Ok(Some(ReplayResult::AccessControlPermissionDenied));
                     }
                 }
                 _ => {}
@@ -477,7 +482,7 @@ impl StreamReplayer {
             stream_reader.current_position_in_bytes()
         );
         if let Some(result) = self
-            .validate_access_control_set(&mut access_control_set, tx, version)
+            .validate_access_control_set(&mut access_control_set, tx)
             .await?
         {
             // there is confliction in access control set

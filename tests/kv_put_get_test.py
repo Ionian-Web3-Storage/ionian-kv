@@ -131,7 +131,7 @@ class KVPutGetTest(TestFramework):
         # write but permission denied
         self.submit(MAX_U64, [], writes, [], tx_params=TX_PARAMS1)
         wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
-            self.next_tx_seq) == "PermissionDenied")
+            self.next_tx_seq) == "WritePermissionDenied")
         self.next_tx_seq += 1
 
         # check data

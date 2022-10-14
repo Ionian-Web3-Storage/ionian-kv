@@ -127,7 +127,10 @@ impl StreamDataFetcher {
                 task.await?;
             }
         }
-        self.store.write().await.finalize_tx_with_hash(tx.seq, tx.hash())?;
+        self.store
+            .write()
+            .await
+            .finalize_tx_with_hash(tx.seq, tx.hash())?;
         Ok(())
     }
 

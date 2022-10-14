@@ -14,6 +14,46 @@ class AccessControlOps(Enum):
     REVOKE_SPECIAL_WRITER_ROLE = 0x31
     RENOUNCE_SPECIAL_WRITER_ROLE = 0x32
 
+    @staticmethod
+    def grant_admin_role(stream_id, address):
+        return [AccessControlOps.GRANT_ADMIN_ROLE, stream_id, to_address(address)]
+
+    @staticmethod
+    def renounce_admin_role(stream_id):
+        return [AccessControlOps.RENOUNCE_ADMIN_ROLE, stream_id]
+
+    @staticmethod
+    def set_key_to_special(stream_id, key):
+        return [AccessControlOps.SET_KEY_TO_SPECIAL, stream_id, key]
+
+    @staticmethod
+    def set_key_to_normal(stream_id, key):
+        return [AccessControlOps.SET_KEY_TO_NORMAL, stream_id, key]
+
+    @staticmethod
+    def grant_writer_role(stream_id, address):
+        return [AccessControlOps.GRANT_WRITER_ROLE, stream_id, to_address(address)]
+
+    @staticmethod
+    def revoke_writer_role(stream_id, address):
+        return [AccessControlOps.REVOKE_WRITER_ROLE, stream_id, to_address(address)]
+
+    @staticmethod
+    def renounce_writer_role(stream_id):
+        return [AccessControlOps.RENOUNCE_WRITER_ROLE, to_address(stream_id)]
+
+    @staticmethod
+    def grant_special_writer_role(stream_id, key, address):
+        return [AccessControlOps.GRANT_SPECIAL_WRITER_ROLE, stream_id, key, to_address(address)]
+
+    @staticmethod
+    def revoke_special_writer_role(stream_id, key, address):
+        return [AccessControlOps.REVOKE_SPECIAL_WRITER_ROLE, stream_id, key, to_address(address)]
+
+    @staticmethod
+    def renounce_special_writer_role(stream_id, key):
+        return [AccessControlOps.RENOUNCE_SPECIAL_WRITER_ROLE, stream_id, key]
+
 
 op_with_key = [
     AccessControlOps.SET_KEY_TO_SPECIAL,
@@ -42,6 +82,12 @@ STREAM_DOMAIN = bytes.fromhex(
 def pad(x, l):
     ans = hex(x)[2:]
     return '0' * (l - len(ans)) + ans
+
+
+def to_address(x):
+    if x.startswith('0x'):
+        return x[2:]
+    return x
 
 
 def to_stream_id(x):
@@ -95,16 +141,16 @@ def create_kv_data(version, reads, writes, access_controls):
         data += bytes.fromhex(pad(ac[k].value, 2))
         k += 1
         # stream_id
-        data += ac[k]
-        k += 1
         tags.append(ac[k])
+        data += bytes.fromhex(ac[k])
+        k += 1
         # key
         if ac[0] in op_with_key:
-            data += ac[k]
+            data += bytes.fromhex(ac[k])
             k += 1
         # address
         if ac[0] in op_with_address:
-            data += ac[k]
+            data += bytes.fromhex(ac[k])
             k += 1
     tags = STREAM_DOMAIN + bytes.fromhex(''.join(list(set(tags))))
     return data, tags
