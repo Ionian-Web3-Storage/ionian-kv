@@ -20,6 +20,7 @@ const RETRY_WAIT_MS: u64 = 1000;
 const ENTRIES_PER_SEGMENT: usize = 1024;
 const MAX_DOWNLOAD_TASK: usize = 5;
 const ALERT_CNT: i32 = 10;
+const MAX_RETRY: usize = 5;
 
 pub struct StreamDataFetcher {
     config: StreamConfig,
@@ -30,7 +31,7 @@ pub struct StreamDataFetcher {
 
 async fn download_with_proof(
     client: HttpClient,
-    tx: Transaction,
+    tx: Arc<Transaction>,
     start_index: usize,
     end_index: usize,
     store: Arc<RwLock<dyn Store>>,
@@ -138,7 +139,7 @@ impl StreamDataFetcher {
     fn spawn_download_task(
         &self,
         client_index: &mut usize,
-        tx: Transaction,
+        tx: Arc<Transaction>,
         start_index: usize,
         end_index: usize,
         sender: &UnboundedSender<Result<(), (usize, usize, bool)>>,
@@ -178,6 +179,7 @@ impl StreamDataFetcher {
         let mut task_counter = 0;
         let mut client_index = 0;
         let (sender, mut rx) = mpsc::unbounded_channel();
+        let tx = Arc::new(tx.clone());
 
         for i in (0..tx_size_in_entry).step_by(ENTRIES_PER_SEGMENT * MAX_DOWNLOAD_TASK) {
             let tasks_end_index = cmp::min(
@@ -233,7 +235,7 @@ impl StreamDataFetcher {
                                     *c += 1;
                                 }
 
-                                if *c == self.clients.len() * MAX_DOWNLOAD_TASK {
+                                if *c == self.clients.len() * MAX_RETRY {
                                     bail!(anyhow!(format!("Download segment failed, start_index {:?}, end_index: {:?}", start_index, end_index)));
                                 }
                             }
