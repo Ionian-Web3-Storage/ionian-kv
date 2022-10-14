@@ -5,7 +5,7 @@ import time
 from os import access
 import random
 from test_framework.test_framework import TestFramework
-from utility.kv import (MAX_U64, op_with_address, op_with_key, STREAM_DOMAIN,
+from utility.kv import (MAX_U64, op_with_address, op_with_key, STREAM_DOMAIN, with_prefix, is_access_control_permission_denied, is_write_permission_denied,
                         MAX_STREAM_ID, pad, to_key, to_stream_id, create_kv_data, AccessControlOps, rand_key, rand_write)
 from utility.submission import submit_data
 from utility.submission import create_submission
@@ -28,8 +28,9 @@ class KVAccessControlTest(TestFramework):
         # tx_seq and data mapping
         self.next_tx_seq = 0
         self.data = {}
-        # write empty stream
-        self.write_streams()
+        self.cross_test(self.stream_ids[0])
+        self.revoke_test(self.stream_ids[1])
+        self.renounce_admin_test(self.stream_ids[2])
 
     def submit(self, version, reads, writes, access_controls, tx_params=TX_PARAMS, given_tags=None, trunc=False):
         chunk_data, tags = create_kv_data(
@@ -46,8 +47,6 @@ class KVAccessControlTest(TestFramework):
 
         client = self.nodes[0]
         wait_until(lambda: client.ionian_get_file_info(data_root) is not None)
-        assert_equal(client.ionian_get_file_info(
-            data_root)["finalized"], False)
 
         segments = submit_data(client, chunk_data)
         self.log.info("segments: %s", [
@@ -58,11 +57,41 @@ class KVAccessControlTest(TestFramework):
         for write in writes:
             self.data[','.join([write[0], write[1]])] = write[3]
 
-    def write_streams(self):
+    def renounce_admin_test(self, stream_id):
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT.address, stream_id, rand_key()), True)
         # first put
-        writes = [rand_write(self.stream_ids[0])]
-        access_controls = [AccessControlOps.grant_writer_role(
-            self.stream_ids[0], GENESIS_ACCOUNT1.address)]
+        writes = [rand_write(stream_id)]
+        access_controls = [AccessControlOps.renounce_admin_role(stream_id)]
+        # grant writer role
+        self.submit(MAX_U64, [], writes, access_controls)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        first_version = self.next_tx_seq
+        self.next_tx_seq += 1
+
+        # check data and role
+        self.update_data(writes)
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value, first_version)
+        assert_equal(self.kv_nodes[0].kv_is_admin(
+            GENESIS_ACCOUNT.address, stream_id), False)
+
+    def revoke_test(self, stream_id):
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT.address, stream_id, rand_key()), True)
+        special_key = rand_key()
+        # first put
+        writes = [rand_write(stream_id), rand_write(stream_id, special_key)]
+        access_controls = []
+        # grant writer role
+        access_controls.append(AccessControlOps.grant_writer_role(
+            stream_id, GENESIS_ACCOUNT1.address))
+        access_controls.append(
+            AccessControlOps.set_key_to_special(stream_id, special_key))
+        access_controls.append(AccessControlOps.grant_special_writer_role(
+            stream_id, special_key, GENESIS_ACCOUNT1.address))
         self.submit(MAX_U64, [], writes, access_controls)
         wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
             self.next_tx_seq) == "Commit")
@@ -75,9 +104,233 @@ class KVAccessControlTest(TestFramework):
             stream_id, key = stream_id_key.split(',')
             self.kv_nodes[0].check_equal(stream_id, key, value)
         assert_equal(self.kv_nodes[0].kv_is_admin(
-            GENESIS_ACCOUNT.address, self.stream_ids[0]), True)
+            GENESIS_ACCOUNT.address, stream_id), True)
         assert_equal(self.kv_nodes[0].kv_is_writer_of_stream(
-            GENESIS_ACCOUNT1.address, self.stream_ids[0]), True)
+            GENESIS_ACCOUNT1.address, stream_id), True)
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_key(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_is_special_key(
+            stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, rand_key()), True)
+
+        # write and renounce
+        writes = [rand_write(stream_id, writes[0][1]),
+                  rand_write(stream_id)]
+        access_controls = []
+        access_controls.append(AccessControlOps.revoke_writer_role(
+            stream_id, GENESIS_ACCOUNT1.address))
+        access_controls.append(AccessControlOps.revoke_special_writer_role(
+            stream_id, special_key, GENESIS_ACCOUNT1.address))
+        # no permission
+        self.submit(first_version, [], writes,
+                    access_controls, tx_params=TX_PARAMS1)
+        wait_until(lambda: is_access_control_permission_denied(self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq)))
+        self.next_tx_seq += 1
+
+        # commit
+        self.submit(first_version, [], writes, access_controls)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        second_version = self.next_tx_seq
+        self.next_tx_seq += 1
+
+        # check data and role
+        self.update_data(writes)
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value, second_version)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), False)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, rand_key()), False)
+
+        # grant and revoke in one tx
+        access_controls = []
+        access_controls.append(AccessControlOps.grant_writer_role(
+            stream_id, GENESIS_ACCOUNT1.address))
+        access_controls.append(AccessControlOps.revoke_writer_role(
+            stream_id, GENESIS_ACCOUNT1.address))
+        access_controls.append(AccessControlOps.grant_special_writer_role(
+            stream_id, special_key, GENESIS_ACCOUNT1.address))
+        access_controls.append(AccessControlOps.revoke_special_writer_role(
+            stream_id, special_key, GENESIS_ACCOUNT1.address))
+        self.submit(MAX_U64, [], writes, access_controls)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        self.next_tx_seq += 1
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_stream(
+            GENESIS_ACCOUNT1.address, stream_id), False)
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_key(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), False)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), False)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, rand_key()), False)
+
+        access_controls = []
+        access_controls.append(AccessControlOps.revoke_writer_role(
+            stream_id, GENESIS_ACCOUNT1.address))
+        access_controls.append(AccessControlOps.grant_writer_role(
+            stream_id, GENESIS_ACCOUNT1.address))
+        access_controls.append(AccessControlOps.revoke_special_writer_role(
+            stream_id, special_key, GENESIS_ACCOUNT1.address))
+        access_controls.append(AccessControlOps.grant_special_writer_role(
+            stream_id, special_key, GENESIS_ACCOUNT1.address))
+        self.submit(MAX_U64, [], writes, access_controls)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        self.next_tx_seq += 1
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_stream(
+            GENESIS_ACCOUNT1.address, stream_id), True)
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_key(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, rand_key()), True)
+
+    def cross_test(self, stream_id):
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT.address, stream_id, rand_key()), True)
+        special_key = rand_key()
+        # first put
+        writes = [rand_write(stream_id), rand_write(stream_id, special_key)]
+        access_controls = []
+        # grant writer role
+        access_controls.append(AccessControlOps.grant_writer_role(
+            stream_id, GENESIS_ACCOUNT1.address))
+        # set special key
+        access_controls.append(
+            AccessControlOps.set_key_to_special(stream_id, special_key))
+        self.submit(MAX_U64, [], writes, access_controls)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        first_version = self.next_tx_seq
+        self.next_tx_seq += 1
+
+        # check data and role
+        self.update_data(writes)
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value)
+        assert_equal(self.kv_nodes[0].kv_is_admin(
+            GENESIS_ACCOUNT.address, stream_id), True)
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_stream(
+            GENESIS_ACCOUNT1.address, stream_id), True)
+        assert_equal(self.kv_nodes[0].kv_is_special_key(
+            stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT.address, stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), False)
+
+        # write special key but no permission
+        writes = [rand_write(stream_id, special_key)]
+        self.submit(MAX_U64, [], writes, access_controls, tx_params=TX_PARAMS1)
+        wait_until(lambda: is_write_permission_denied(
+            self.kv_nodes[0].kv_get_trasanction_result(self.next_tx_seq)))
+        self.next_tx_seq += 1
+
+        # grant special writer role
+        self.submit(MAX_U64, [], [], [AccessControlOps.grant_special_writer_role(
+            stream_id, special_key, GENESIS_ACCOUNT1.address)])
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        self.next_tx_seq += 1
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_key(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_key(
+            GENESIS_ACCOUNT1.address, stream_id, special_key, first_version), False)
+
+        # write and renounce
+        writes = [rand_write(stream_id, writes[0][1]),
+                  rand_write(stream_id)]
+        access_controls = [AccessControlOps.renounce_writer_role(
+            stream_id)]
+        self.submit(first_version, [], writes,
+                    access_controls, tx_params=TX_PARAMS1)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        second_version = self.next_tx_seq
+        self.next_tx_seq += 1
+
+        # check data and role
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value, first_version)
+        self.update_data(writes)
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value, second_version)
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_stream(
+            GENESIS_ACCOUNT1.address, stream_id), False)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, rand_key()), False)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_key(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), True)
+
+        # write special key and renounce
+        writes = [rand_write(stream_id, special_key)]
+        access_controls = [AccessControlOps.renounce_special_writer_role(
+            stream_id, special_key)]
+        self.submit(MAX_U64, [], writes, access_controls, tx_params=TX_PARAMS1)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        third_version = self.next_tx_seq
+        self.next_tx_seq += 1
+        self.update_data(writes)
+        for stream_id_key, value in self.data.items():
+            stream_id, key = stream_id_key.split(',')
+            self.kv_nodes[0].check_equal(stream_id, key, value, third_version)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), False)
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_key(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), False)
+
+        # grant special writer role
+        access_controls = []
+        access_controls.append(AccessControlOps.grant_special_writer_role(
+            stream_id, special_key, GENESIS_ACCOUNT1.address))
+        # no permission
+        self.submit(MAX_U64, [], [], access_controls, tx_params=TX_PARAMS1)
+        wait_until(lambda: is_access_control_permission_denied(
+            self.kv_nodes[0].kv_get_trasanction_result(self.next_tx_seq)))
+        self.next_tx_seq += 1
+        # commit
+        self.submit(MAX_U64, [], [], access_controls)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        self.next_tx_seq += 1
+        # role check
+        assert_equal(self.kv_nodes[0].kv_is_special_key(
+            stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), True)
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_key(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), True)
+        # set key to normal
+        access_controls = []
+        access_controls.append(
+            AccessControlOps.set_key_to_normal(stream_id, special_key))
+        self.submit(MAX_U64, [], [], access_controls)
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        self.next_tx_seq += 1
+        # check
+        assert_equal(self.kv_nodes[0].kv_is_special_key(
+            stream_id, special_key), False)
+        assert_equal(self.kv_nodes[0].kv_has_write_permission(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), False)
+        assert_equal(self.kv_nodes[0].kv_is_writer_of_key(
+            GENESIS_ACCOUNT1.address, stream_id, special_key), True)
 
 
 if __name__ == "__main__":

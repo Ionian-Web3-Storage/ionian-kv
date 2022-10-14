@@ -40,7 +40,7 @@ class AccessControlOps(Enum):
 
     @staticmethod
     def renounce_writer_role(stream_id):
-        return [AccessControlOps.RENOUNCE_WRITER_ROLE, to_address(stream_id)]
+        return [AccessControlOps.RENOUNCE_WRITER_ROLE, stream_id]
 
     @staticmethod
     def grant_special_writer_role(stream_id, key, address):
@@ -79,6 +79,13 @@ STREAM_DOMAIN = bytes.fromhex(
     "df2ff3bb0af36c6384e6206552a4ed807f6f6a26e7d0aa6bff772ddc9d4307aa")
 
 
+def with_prefix(x):
+    x = x.lower()
+    if not x.startswith('0x'):
+        x = '0x' + x
+    return x
+
+
 def pad(x, l):
     ans = hex(x)[2:]
     return '0' * (l - len(ans)) + ans
@@ -106,6 +113,18 @@ def rand_write(stream_id=None, key=None):
     return [to_stream_id(random.randrange(0, MAX_STREAM_ID)) if stream_id is None else stream_id,
             rand_key() if key is None else key,
             random.randrange(MIN_DATA_LENGTH, MAX_DATA_LENGTH)]
+
+
+def is_access_control_permission_denied(x):
+    if x is None:
+        return False
+    return x.startswith("AccessControlPermissionDenied")
+
+
+def is_write_permission_denied(x):
+    if x is None:
+        return False
+    return x.startswith("WritePermissionDenied")
 
 # reads: array of [stream_id, key]
 # writes: array of [stream_id, key, data_length]

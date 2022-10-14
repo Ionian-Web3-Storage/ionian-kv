@@ -5,7 +5,7 @@ import time
 from os import access
 import random
 from test_framework.test_framework import TestFramework
-from utility.kv import (MAX_U64, op_with_address, op_with_key, STREAM_DOMAIN,
+from utility.kv import (MAX_U64, op_with_address, op_with_key, STREAM_DOMAIN, with_prefix, is_write_permission_denied,
                         MAX_STREAM_ID, pad, to_key, to_stream_id, create_kv_data, AccessControlOps, rand_key, rand_write)
 from utility.submission import submit_data
 from utility.submission import create_submission
@@ -51,8 +51,6 @@ class KVPutGetTest(TestFramework):
 
         client = self.nodes[0]
         wait_until(lambda: client.ionian_get_file_info(data_root) is not None)
-        assert_equal(client.ionian_get_file_info(
-            data_root)["finalized"], False)
 
         segments = submit_data(client, chunk_data)
         self.log.info("segments: %s", [
@@ -130,8 +128,8 @@ class KVPutGetTest(TestFramework):
 
         # write but permission denied
         self.submit(MAX_U64, [], writes, [], tx_params=TX_PARAMS1)
-        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
-            self.next_tx_seq) == "WritePermissionDenied")
+        wait_until(lambda: is_write_permission_denied(
+            self.kv_nodes[0].kv_get_trasanction_result(self.next_tx_seq)))
         self.next_tx_seq += 1
 
         # check data
