@@ -562,3 +562,19 @@ impl AccessControlOps {
     pub const REVOKE_SPECIAL_WRITER_ROLE: u8 = 0x31;
     pub const RENOUNCE_SPECIAL_WRITER_ROLE: u8 = 0x32;
 }
+
+pub fn to_access_control_op_name(x: u8) -> &'static str {
+    match x {
+        0x00 => "GRANT_ADMIN_ROLE",
+        0x01 => "RENOUNCE_ADMIN_ROLE",
+        0x10 => "SET_KEY_TO_SPECIAL",
+        0x11 => "SET_KEY_TO_NORMAL",
+        0x20 => "GRANT_WRITER_ROLE",
+        0x21 => "REVOKE_WRITER_ROLE",
+        0x22 => "RENOUNCE_WRITER_ROLE",
+        0x30 => "GRANT_SPECIAL_WRITER_ROLE",
+        0x31 => "REVOKE_SPECIAL_WRITER_ROLE",
+        0x32 => "RENOUNCE_SPECIAL_WRITER_ROLE",
+        _ => "UNKNOWN",
+    }
+}
