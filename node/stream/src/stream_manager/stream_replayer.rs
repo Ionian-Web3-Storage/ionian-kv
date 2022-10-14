@@ -265,7 +265,7 @@ impl StreamReplayer {
             }
             // check write permission
             if !(store_read
-                .has_write_permission(tx.sender, stream_write.stream_id, stream_write.key, version)
+                .has_write_permission(tx.sender, stream_write.stream_id, stream_write.key, tx.seq)
                 .await?)
             {
                 return Ok(Some(ReplayResult::WritePermissionDenied));
