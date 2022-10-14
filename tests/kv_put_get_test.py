@@ -41,7 +41,7 @@ class KVPutGetTest(TestFramework):
             version, reads, writes, access_controls)
         if trunc:
             chunk_data = chunk_data[:random.randrange(
-                len(chunk_data) / 2, len(chunk_data))]
+                len(chunk_data) // 2, len(chunk_data))]
         submissions, data_root = create_submission(
             chunk_data, tags if given_tags is None else given_tags)
         self.log.info("data root: %s, submissions: %s", data_root, submissions)

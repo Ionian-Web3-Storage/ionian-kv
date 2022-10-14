@@ -6,7 +6,7 @@ kv_db_dir = "kv.DB"
 
 rpc_enabled = true
 rpc_listen_address = "127.0.0.1:6789"
-ionian_node_url = "http://127.0.0.1:5678"
+ionian_node_urls = "http://127.0.0.1:5678"
 
 log_config_file = "log_config"
 

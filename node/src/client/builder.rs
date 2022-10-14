@@ -33,7 +33,7 @@ struct LogSyncComponents {
 pub struct ClientBuilder {
     runtime_context: Option<RuntimeContext>,
     store: Option<Arc<RwLock<dyn Store>>>,
-    ionian_client: Option<HttpClient>,
+    ionian_clients: Option<Vec<HttpClient>>,
     log_sync: Option<LogSyncComponents>,
 }
 
@@ -89,8 +89,8 @@ impl ClientBuilder {
             store,
         };
 
-        self.ionian_client = Some(
-            rpc::ionian_client(&ctx)
+        self.ionian_clients = Some(
+            rpc::ionian_clients(&ctx)
                 .map_err(|e| format!("Unable to create rpc client: {:?}", e))?,
         );
 
@@ -106,9 +106,9 @@ impl ClientBuilder {
     pub async fn with_stream(self, config: &StreamConfig) -> Result<Self, String> {
         let executor = require!("stream", self, runtime_context).clone().executor;
         let store = require!("stream", self, store).clone();
-        let ionian_client = require!("stream", self, ionian_client).clone();
+        let ionian_clients = require!("stream", self, ionian_clients).clone();
         let (stream_data_fetcher, stream_replayer) =
-            StreamManager::initialize(config, store, ionian_client)
+            StreamManager::initialize(config, store, ionian_clients, executor.clone())
                 .await
                 .map_err(|e| e.to_string())?;
         StreamManager::spawn(stream_data_fetcher, stream_replayer, executor)
