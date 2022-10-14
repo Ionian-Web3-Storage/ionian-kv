@@ -1,9 +1,8 @@
 use crate::StreamConfig;
 use anyhow::{anyhow, bail, Result};
-use ethereum_types::H256;
 use jsonrpsee::http_client::HttpClient;
 use rpc::IonianRpcClient;
-use shared_types::{ChunkArray, DataRoot, Transaction};
+use shared_types::{ChunkArray, Transaction};
 use std::{
     cmp,
     collections::{HashMap, VecDeque},
@@ -31,9 +30,7 @@ pub struct StreamDataFetcher {
 
 async fn download_with_proof(
     client: HttpClient,
-    data_merkle_root: DataRoot,
-    tx_hash: H256,
-    tx_seq: u64,
+    tx: Transaction,
     start_index: usize,
     end_index: usize,
     store: Arc<RwLock<dyn Store>>,
@@ -43,7 +40,7 @@ async fn download_with_proof(
     while fail_cnt < ALERT_CNT {
         debug!("download_with_proof for {}", start_index);
         match client
-            .download_segment_with_proof(data_merkle_root, start_index / ENTRIES_PER_SEGMENT)
+            .download_segment_with_proof(tx.data_merkle_root, start_index / ENTRIES_PER_SEGMENT)
             .await
         {
             Ok(Some(segment)) => {
@@ -58,7 +55,7 @@ async fn download_with_proof(
                     return;
                 }
 
-                if segment.root != data_merkle_root {
+                if segment.root != tx.data_merkle_root {
                     debug!("invalid file root");
                     if let Err(e) = sender.send(Err((start_index, end_index, true))) {
                         error!("send error: {:?}", e);
@@ -77,8 +74,8 @@ async fn download_with_proof(
                 }
 
                 if let Err(e) = store.write().await.put_chunks_with_tx_hash(
-                    tx_seq,
-                    tx_hash,
+                    tx.seq,
+                    tx.hash(),
                     ChunkArray {
                         data: segment.data,
                         start_index: (segment.index * ENTRIES_PER_SEGMENT) as u64,
@@ -141,9 +138,7 @@ impl StreamDataFetcher {
     fn spawn_download_task(
         &self,
         client_index: &mut usize,
-        data_merkle_root: DataRoot,
-        tx_hash: H256,
-        tx_seq: u64,
+        tx: Transaction,
         start_index: usize,
         end_index: usize,
         sender: &UnboundedSender<Result<(), (usize, usize, bool)>>,
@@ -156,9 +151,7 @@ impl StreamDataFetcher {
         self.task_executor.spawn(
             download_with_proof(
                 self.clients[*client_index].clone(),
-                data_merkle_root,
-                tx_hash,
-                tx_seq,
+                tx,
                 start_index,
                 end_index,
                 self.store.clone(),
@@ -206,9 +199,7 @@ impl StreamDataFetcher {
             let (start_index, end_index) = pending_entries.pop_front().unwrap();
             self.spawn_download_task(
                 &mut client_index,
-                tx.data_merkle_root,
-                tx.hash(),
-                tx.seq,
+                tx.clone(),
                 start_index,
                 end_index,
                 &sender,
@@ -224,9 +215,7 @@ impl StreamDataFetcher {
                         if let Some((start_index, end_index)) = pending_entries.pop_front() {
                             self.spawn_download_task(
                                 &mut client_index,
-                                tx.data_merkle_root,
-                                tx.hash(),
-                                tx.seq,
+                                tx.clone(),
                                 start_index,
                                 end_index,
                                 &sender,
@@ -255,9 +244,7 @@ impl StreamDataFetcher {
 
                         self.spawn_download_task(
                             &mut client_index,
-                            tx.data_merkle_root,
-                            tx.hash(),
-                            tx.seq,
+                            tx.clone(),
                             start_index,
                             end_index,
                             &sender,

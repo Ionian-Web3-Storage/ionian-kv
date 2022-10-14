@@ -393,14 +393,14 @@ class TestFramework:
         node.wait_for_rpc_connection()
 
     def stop_nodes(self):
+        for node in self.kv_nodes:
+            node.stop()
+
         # stop ionion nodes first
         for node in self.nodes:
             node.stop()
 
         for node in self.blockchain_nodes:
-            node.stop()
-
-        for node in self.kv_nodes:
             node.stop()
 
     def stop_storage_node(self, index):
