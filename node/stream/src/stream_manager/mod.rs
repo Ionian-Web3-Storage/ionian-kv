@@ -22,7 +22,8 @@ impl StreamManager {
     pub async fn initialize(
         config: &StreamConfig,
         store: Arc<RwLock<dyn Store>>,
-        client: HttpClient,
+        clients: Vec<HttpClient>,
+        task_executor: TaskExecutor,
     ) -> Result<(StreamDataFetcher, StreamReplayer)> {
         // initialize
         let holding_stream_ids = store.read().await.get_holding_stream_ids().await?;
@@ -52,7 +53,8 @@ impl StreamManager {
         }
 
         // spawn data sync and stream replay threads
-        let fetcher = StreamDataFetcher::new(config.clone(), store.clone(), client).await?;
+        let fetcher =
+            StreamDataFetcher::new(config.clone(), store.clone(), clients, task_executor).await?;
         let replayer = StreamReplayer::new(config.clone(), store.clone()).await?;
         Ok((fetcher, replayer))
     }
@@ -69,7 +71,7 @@ impl StreamManager {
 
         executor.spawn(
             async move { Box::pin(replayer.run()).await },
-            "stream data fetcher",
+            "stream data replayer",
         );
         Ok(())
     }
