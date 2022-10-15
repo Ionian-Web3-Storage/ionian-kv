@@ -10,6 +10,7 @@ use merkle_tree::RawLeafSha3Algorithm;
 use serde::{Deserialize, Serialize};
 use ssz::Encode;
 use ssz_derive::{Decode as DeriveDecode, Encode as DeriveEncode};
+use std::collections::HashSet;
 use std::hash::Hasher;
 use tiny_keccak::{Hasher as KeccakHasher, Keccak};
 use tracing::debug;
@@ -299,6 +300,7 @@ pub struct StreamWriteSet {
 #[derive(Debug)]
 pub struct AccessControlSet {
     pub access_controls: Vec<AccessControl>,
+    pub is_admin: HashSet<H256>,
 }
 
 #[derive(Debug)]
@@ -307,6 +309,7 @@ pub struct AccessControl {
     pub stream_id: H256,
     pub key: H256,
     pub account: H160,
+    pub operator: H160,
 }
 
 impl TryFrom<&FileProof> for RawFileProof<[u8; 32]> {

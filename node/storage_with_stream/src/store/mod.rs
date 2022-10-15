@@ -9,6 +9,7 @@ mod sqlite_db_statements;
 pub mod store_manager;
 mod stream_store;
 
+pub use stream_store::to_access_control_op_name;
 pub use stream_store::AccessControlOps;
 
 pub trait Store:

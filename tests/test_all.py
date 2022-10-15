@@ -8,7 +8,7 @@ from concurrent.futures import ProcessPoolExecutor
 
 PORT_MIN = 11000
 PORT_MAX = 65535
-PORT_RANGE = 400
+PORT_RANGE = 600
 
 
 def run_single_test(py, script, test_dir, index, port_min, port_max):

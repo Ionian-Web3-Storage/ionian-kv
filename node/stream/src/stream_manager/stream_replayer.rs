@@ -12,6 +12,7 @@ use std::fmt;
 use std::{cmp, sync::Arc, time::Duration};
 use storage_with_stream::error::Error;
 use storage_with_stream::log_store::log_manager::ENTRY_SIZE;
+use storage_with_stream::store::to_access_control_op_name;
 use storage_with_stream::AccessControlOps;
 use storage_with_stream::Store;
 use tokio::sync::RwLock;
@@ -33,7 +34,8 @@ enum ReplayResult {
     DataParseError(String),
     VersionConfliction,
     TagsMismatch,
-    PermissionDenied,
+    WritePermissionDenied(H256, H256),
+    AccessControlPermissionDenied(u8, H256, H256, H160),
     DataUnavailable,
 }
 
@@ -44,7 +46,21 @@ impl fmt::Display for ReplayResult {
             ReplayResult::DataParseError(e) => write!(f, "DataParseError: {}", e),
             ReplayResult::VersionConfliction => write!(f, "VersionConfliction"),
             ReplayResult::TagsMismatch => write!(f, "TagsMismatch"),
-            ReplayResult::PermissionDenied => write!(f, "PermissionDenied"),
+            ReplayResult::WritePermissionDenied(stream_id, key) => write!(
+                f,
+                "WritePermissionDenied: stream: {:?}, key: {:?}",
+                stream_id, key
+            ),
+            ReplayResult::AccessControlPermissionDenied(op_type, stream_id, key, account) => {
+                write!(
+                    f,
+                    "AccessControlPermissionDenied: operation: {}, stream: {:?}, key: {:?}, account: {:?}",
+                    to_access_control_op_name(*op_type),
+                    stream_id,
+                    key,
+                    account
+                )
+            }
             ReplayResult::DataUnavailable => write!(f, "DataUnavailable"),
         }
     }
@@ -261,10 +277,13 @@ impl StreamReplayer {
             }
             // check write permission
             if !(store_read
-                .has_write_permission(tx.sender, stream_write.stream_id, stream_write.key, version)
+                .has_write_permission(tx.sender, stream_write.stream_id, stream_write.key, tx.seq)
                 .await?)
             {
-                return Ok(Some(ReplayResult::PermissionDenied));
+                return Ok(Some(ReplayResult::WritePermissionDenied(
+                    stream_write.stream_id,
+                    stream_write.key,
+                )));
             }
         }
         Ok(None)
@@ -283,6 +302,34 @@ impl StreamReplayer {
         // all operations can be categorized by op_type & 0xf0
         // for each category, except GRANT_ADMIN_ROLE, only the last operation of each account is reserved
         let mut access_ops = HashMap::new();
+        // pad GRANT_ADMIN_ROLE prefix to handle the first write to new stream
+        let mut is_admin = HashSet::new();
+        let store_read = self.store.read().await;
+        for id in &tx.stream_ids {
+            if store_read.is_new_stream(*id, tx.seq).await? {
+                let op_meta = (
+                    AccessControlOps::GRANT_ADMIN_ROLE & 0xf0,
+                    *id,
+                    H256::zero(),
+                    tx.sender,
+                );
+                access_ops.insert(
+                    op_meta,
+                    AccessControl {
+                        op_type: AccessControlOps::GRANT_ADMIN_ROLE,
+                        stream_id: *id,
+                        key: H256::zero(),
+                        account: tx.sender,
+                        operator: H160::zero(),
+                    },
+                );
+                is_admin.insert(*id);
+            } else if store_read.is_admin(tx.sender, *id, tx.seq).await? {
+                is_admin.insert(*id);
+            }
+        }
+        drop(store_read);
+        // ops in transaction
         for _ in 0..(size as usize) {
             let op_type = u8::from_be_bytes(
                 stream_reader
@@ -342,12 +389,14 @@ impl StreamReplayer {
                         stream_id,
                         key,
                         account,
+                        operator: tx.sender,
                     },
                 );
             }
         }
         Ok(AccessControlSet {
             access_controls: access_ops.into_values().collect(),
+            is_admin,
         })
     }
 
@@ -355,27 +404,7 @@ impl StreamReplayer {
         &self,
         access_control_set: &mut AccessControlSet,
         tx: &Transaction,
-        version: u64,
     ) -> Result<Option<ReplayResult>> {
-        // pad GRANT_ADMIN_ROLE prefix to handle the first write to new stream
-        let mut with_prefix_grant_admin_role = vec![];
-        let mut is_admin = HashSet::new();
-        let store_read = self.store.read().await;
-        for id in &tx.stream_ids {
-            if store_read.is_new_stream(*id, version).await? {
-                with_prefix_grant_admin_role.push(AccessControl {
-                    op_type: AccessControlOps::GRANT_ADMIN_ROLE,
-                    stream_id: *id,
-                    key: H256::zero(),
-                    account: tx.sender,
-                });
-                is_admin.insert(*id);
-            } else if store_read.is_admin(tx.sender, *id, version).await? {
-                is_admin.insert(*id);
-            }
-        }
-        with_prefix_grant_admin_role.append(&mut access_control_set.access_controls);
-        access_control_set.access_controls = with_prefix_grant_admin_role;
         // validate
         let stream_set = HashSet::<H256>::from_iter(tx.stream_ids.iter().cloned());
         for access_control in &access_control_set.access_controls {
@@ -391,8 +420,16 @@ impl StreamReplayer {
                 | AccessControlOps::REVOKE_WRITER_ROLE
                 | AccessControlOps::GRANT_SPECIAL_WRITER_ROLE
                 | AccessControlOps::REVOKE_SPECIAL_WRITER_ROLE => {
-                    if !is_admin.contains(&access_control.stream_id) {
-                        return Ok(Some(ReplayResult::PermissionDenied));
+                    if !access_control_set
+                        .is_admin
+                        .contains(&access_control.stream_id)
+                    {
+                        return Ok(Some(ReplayResult::AccessControlPermissionDenied(
+                            access_control.op_type,
+                            access_control.stream_id,
+                            access_control.key,
+                            access_control.account,
+                        )));
                     }
                 }
                 _ => {}
@@ -477,7 +514,7 @@ impl StreamReplayer {
             stream_reader.current_position_in_bytes()
         );
         if let Some(result) = self
-            .validate_access_control_set(&mut access_control_set, tx, version)
+            .validate_access_control_set(&mut access_control_set, tx)
             .await?
         {
             // there is confliction in access control set
