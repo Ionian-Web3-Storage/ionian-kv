@@ -497,7 +497,39 @@ impl StreamStore {
             "stream replay progress ahead than data sync progress"
         );
 
-        if tx_seq < stream_data_sync_progress {
+        if tx_seq == u64::MAX {
+            self.connection
+                .call(move |conn| {
+                    let tx_seq = convert_to_i64(0);
+                    let tx = conn.transaction()?;
+                    tx.execute(
+                        SqliteDBStatements::UPDATE_STREAM_DATA_SYNC_PROGRESS_STATEMENT,
+                        named_params! {
+                            ":data_sync_progress": tx_seq,
+                            ":id": 0,
+                            ":from": convert_to_i64(stream_data_sync_progress),
+                        },
+                    )?;
+
+                    tx.execute(
+                        SqliteDBStatements::UPDATE_STREAM_REPLAY_PROGRESS_STATEMENT,
+                        named_params! {
+                            ":stream_replay_progress": tx_seq,
+                            ":id": 0,
+                            ":from": convert_to_i64(stream_replay_progress),
+                        },
+                    )?;
+
+                    tx.execute(SqliteDBStatements::DELETE_ALL_TX_STATEMENT, [])?;
+                    tx.execute(SqliteDBStatements::DELETE_ALL_STREAM_WRITE_STATEMENT, [])?;
+                    tx.execute(SqliteDBStatements::DELETE_ALL_ACCESS_CONTROL_STATEMENT, [])?;
+
+                    tx.commit()?;
+                    Ok::<(), anyhow::Error>(())
+                })
+                .await?;
+        } else if tx_seq < stream_data_sync_progress {
+            info!("txseq amsll");
             if tx_seq < stream_replay_progress {
                 self.connection
                     .call(move |conn| {
@@ -508,7 +540,7 @@ impl StreamStore {
                             named_params! {
                                 ":data_sync_progress": tx_seq + 1,
                                 ":id": 0,
-                                ":from": stream_replay_progress,
+                                ":from": convert_to_i64(stream_data_sync_progress),
                             },
                         )?;
 
@@ -517,7 +549,7 @@ impl StreamStore {
                             named_params! {
                                 ":stream_replay_progress": tx_seq + 1,
                                 ":id": 0,
-                                ":from": stream_replay_progress,
+                                ":from": convert_to_i64(stream_replay_progress),
                             },
                         )?;
 
