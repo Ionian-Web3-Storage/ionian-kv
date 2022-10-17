@@ -145,8 +145,8 @@ impl StreamDataFetcher {
         sender: &UnboundedSender<Result<(), (usize, usize, bool)>>,
     ) {
         debug!(
-            "downloading start_index {:?}, end_index: {:?}",
-            start_index, end_index
+            "downloading start_index {:?}, end_index: {:?} from client index: {}",
+            start_index, end_index, client_index
         );
 
         self.task_executor.spawn(
