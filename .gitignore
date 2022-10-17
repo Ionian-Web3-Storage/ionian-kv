@@ -15,3 +15,5 @@ ccov
 tests/**/__pycache__
 *.pyc
 tests/utility/geth
+tests/utility/conflux
+tests/tmp/**
