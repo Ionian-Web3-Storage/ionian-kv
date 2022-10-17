@@ -372,7 +372,7 @@ class TestFramework:
         self.__setup_blockchain_node()
         self.__setup_ionian_node()
 
-    def setup_kv_node(self, index, stream_ids):
+    def setup_kv_node(self, index, stream_ids, updated_config={}):
         assert os.path.exists(self.kv_binary), (
             "%s should be exist" % self.kv_binary
         )
@@ -380,7 +380,7 @@ class TestFramework:
             index,
             self.root_dir,
             self.kv_binary,
-            {},
+            updated_config,
             self.contract.address(),
             self.log,
             stream_ids=stream_ids,
