@@ -529,7 +529,6 @@ impl StreamStore {
                 })
                 .await?;
         } else if tx_seq < stream_data_sync_progress {
-            info!("txseq amsll");
             if tx_seq < stream_replay_progress {
                 self.connection
                     .call(move |conn| {
