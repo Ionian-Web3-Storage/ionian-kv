@@ -99,7 +99,7 @@ def run():
     for subdir in test_subdirs:
         subdir_path = os.path.join(test_dir, subdir)
         for file in os.listdir(subdir_path):
-            if file.endswith("kv_reorg_test.py"):
+            if file.endswith("_test.py"):
                 rel_path = os.path.join(subdir, file)
                 if rel_path not in slow_tests:
                     TEST_SCRIPTS.append(rel_path)

@@ -137,13 +137,15 @@ class KVPutGetTest(TestFramework):
             stream_id, key = stream_id_key.split(',')
             self.kv_nodes[0].check_equal(stream_id, key, value)
 
-        # overwrite
+        # overwrite, write same key multiple times in one tx
         writes = []
         reads = []
         for stream_id_key, value in self.data.items():
             stream_id, key = stream_id_key.split(',')
-            writes.append(rand_write(stream_id, key))
+            for _ in range(random.randrange(3, 10)):
+                writes.append(rand_write(stream_id, key))
             reads.append([stream_id, key])
+        random.shuffle(writes)
         self.submit(second_version, [], writes, [])
         wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
             self.next_tx_seq) == "Commit")
