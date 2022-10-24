@@ -206,7 +206,29 @@ impl LogSyncManager {
             trace!("handle_data: data={:?}", data);
             match data {
                 LogFetchProgress::SyncedBlock(progress) => {
-                    self.store.write().await.put_sync_progress(progress)?;
+                    match self
+                        .log_fetcher
+                        .provider()
+                        .get_block(
+                            progress
+                                .0
+                                .saturating_sub(self.config.confirmation_block_count),
+                        )
+                        .await
+                    {
+                        Ok(Some(b)) => {
+                            if let (Some(block_number), Some(block_hash)) = (b.number, b.hash) {
+                                self.store
+                                    .write()
+                                    .await
+                                    .put_sync_progress((block_number.as_u64(), block_hash))?;
+                            }
+                        }
+                        e => {
+                            error!("log put progress check rpc fails, e={:?}", e);
+                            bail!("log sync update progress error");
+                        }
+                    }
                 }
                 LogFetchProgress::Transaction(tx) => {
                     if !self.put_tx(tx).await {
