@@ -5,10 +5,11 @@ use shared_types::{
     AccessControlSet, Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot,
     FlowRangeProof, StreamWriteSet, Transaction,
 };
+use storage::log_store::config::Configurable;
 use std::path::Path;
 use storage::log_store::log_manager::LogConfig;
 use storage::log_store::{
-    Configurable, LogStoreChunkRead, LogStoreChunkWrite, LogStoreRead, LogStoreWrite,
+    LogStoreChunkRead, LogStoreChunkWrite, LogStoreRead, LogStoreWrite,
 };
 use storage::LogManager;
 use tracing::instrument;
@@ -197,6 +198,14 @@ impl Configurable for StoreManager {
 
     fn set_config(&self, key: &[u8], value: &[u8]) -> Result<()> {
         self.log_store.set_config(key, value)
+    }
+
+    fn remove_config(&self, key: &[u8]) -> Result<()> {
+        self.log_store.remove_config(key)
+    }
+
+    fn exec_configs(&self, tx: storage::log_store::config::ConfigTx) -> Result<()> {
+        self.log_store.exec_configs(tx)
     }
 }
 
