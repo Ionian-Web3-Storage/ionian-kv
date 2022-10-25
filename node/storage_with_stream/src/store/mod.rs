@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 use ethereum_types::{H160, H256};
 use shared_types::{AccessControlSet, StreamWriteSet, Transaction};
-use storage::log_store::{Configurable, LogStoreRead, LogStoreWrite};
+use storage::log_store::config::Configurable;
+use storage::log_store::{LogStoreRead, LogStoreWrite};
 
 use crate::error::Result;
 

@@ -90,6 +90,9 @@ class ReorgTest(TestFramework):
         # first put
         writes = [rand_write() for i in range(20)]
         data_root, chunk_data = self.submit(MAX_U64, [], writes, [])
+        client = self.nodes[0]
+        assert client.ionian_get_file_info(data_root) is None
+        self.blockchain_nodes[0].generate_empty_blocks(12)
         self.submit_data(data_root, chunk_data)
         wait_until(
             lambda: self.kv_nodes[0].kv_get_trasanction_result(self.next_tx_seq)
@@ -109,7 +112,7 @@ class ReorgTest(TestFramework):
         writes = [rand_write() for i in range(20)]
         data_root, chunk_data = self.submit(MAX_U64, [], writes, [], node_index=1)
 
-        self.blockchain_nodes[1].generate_empty_blocks(15)
+        self.blockchain_nodes[1].generate_empty_blocks(30)
         connect_nodes(self.blockchain_nodes, 0, 1)
         sync_blocks(self.blockchain_nodes[0:2])
 

@@ -146,9 +146,10 @@ def create_kv_data(version, reads, writes, access_controls):
         data += bytes.fromhex(write[0])
         data += bytes.fromhex(write[1])
         data += bytes.fromhex(pad(write[2], 16))
-        write_data = random.randbytes(write[2])
         tags.append(write[0])
-        write.append(write_data)
+        if len(write) == 3:
+            write_data = random.randbytes(write[2])
+            write.append(write_data)
     # write data
     for write in writes:
         data += write[3]
@@ -171,5 +172,7 @@ def create_kv_data(version, reads, writes, access_controls):
         if ac[0] in op_with_address:
             data += bytes.fromhex(ac[k])
             k += 1
-    tags = STREAM_DOMAIN + bytes.fromhex(''.join(list(set(tags))))
+    tags = list(set(tags))
+    tags = sorted(tags)
+    tags = STREAM_DOMAIN + bytes.fromhex(''.join(tags))
     return data, tags

@@ -1,8 +1,7 @@
 use crate::log_store::flow_store::{batch_iter, FlowConfig, FlowStore};
 use crate::log_store::tx_store::TransactionStore;
 use crate::log_store::{
-    Configurable, FlowRead, FlowWrite, LogStoreChunkRead, LogStoreChunkWrite, LogStoreRead,
-    LogStoreWrite,
+    FlowRead, FlowWrite, LogStoreChunkRead, LogStoreChunkWrite, LogStoreRead, LogStoreWrite,
 };
 use crate::{try_option, IonianKeyValueDB};
 use anyhow::{anyhow, bail, Result};
@@ -21,6 +20,8 @@ use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, error, instrument, trace};
 
+use super::LogStoreInner;
+
 /// 256 Bytes
 pub const ENTRY_SIZE: usize = 256;
 /// 1024 Entries.
@@ -38,7 +39,7 @@ pub const COL_NUM: u32 = 7;
 type Merkle = AppendMerkleTree<H256, Sha3Algorithm>;
 
 pub struct LogManager {
-    db: Arc<dyn IonianKeyValueDB>,
+    pub(crate) db: Arc<dyn IonianKeyValueDB>,
     tx_store: TransactionStore,
     flow_store: FlowStore,
     // TODO(zz): Refactor the in-memory merkle and in-disk storage together.
@@ -51,6 +52,16 @@ pub struct LogManager {
 #[derive(Clone, Default)]
 pub struct LogConfig {
     pub flow: FlowConfig,
+}
+
+impl LogStoreInner for LogManager {
+    fn flow(&self) -> &dyn super::Flow {
+        &self.flow_store
+    }
+
+    fn flow_mut(&mut self) -> &mut dyn super::Flow {
+        &mut self.flow_store
+    }
 }
 
 impl LogStoreChunkWrite for LogManager {
@@ -365,17 +376,6 @@ impl LogStoreRead for LogManager {
             *self.pora_chunks_merkle.root(),
             self.last_chunk_start_index() + self.last_chunk_merkle.leaves() as u64,
         ))
-    }
-}
-
-impl Configurable for LogManager {
-    fn get_config(&self, key: &[u8]) -> Result<Option<Vec<u8>>> {
-        Ok(self.db.get(COL_MISC, key)?)
-    }
-
-    fn set_config(&self, key: &[u8], value: &[u8]) -> Result<()> {
-        self.db.put(COL_MISC, key, value)?;
-        Ok(())
     }
 }
 

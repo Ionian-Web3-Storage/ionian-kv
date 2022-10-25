@@ -16,7 +16,7 @@ from utility.utils import (
 from config.node_config import TX_PARAMS, TX_PARAMS1, GENESIS_ACCOUNT, GENESIS_ACCOUNT1
 
 
-class KVPutGetTest(TestFramework):
+class KVRecoveryTest(TestFramework):
     def setup_params(self):
         self.num_blockchain_nodes = 1
         self.num_nodes = 1
@@ -70,13 +70,9 @@ class KVPutGetTest(TestFramework):
         first_version = self.next_tx_seq
         self.next_tx_seq += 1
 
-        # check data and admin role
         self.update_data(writes)
-        for stream_id_key, value in self.data.items():
-            stream_id, key = stream_id_key.split(',')
-            self.kv_nodes[0].check_equal(stream_id, key, value)
-            assert_equal(self.kv_nodes[0].kv_is_admin(
-                GENESIS_ACCOUNT.address, stream_id), True)
+        # stop node
+        self.kv_nodes[0].stop()
 
         # overwrite
         writes = []
@@ -84,6 +80,10 @@ class KVPutGetTest(TestFramework):
             stream_id, key = stream_id_key.split(',')
             writes.append(rand_write(stream_id, key))
         self.submit(first_version, [], writes, [])
+
+        # restart node
+        self.kv_nodes[0].start()
+        self.kv_nodes[0].wait_for_rpc_connection()
         wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
             self.next_tx_seq) == "Commit")
         second_version = self.next_tx_seq
@@ -96,71 +96,6 @@ class KVPutGetTest(TestFramework):
             stream_id, key = stream_id_key.split(',')
             self.kv_nodes[0].check_equal(stream_id, key, value, second_version)
 
-        # write but conflict
-        writes = []
-        for stream_id_key, value in self.data.items():
-            stream_id, key = stream_id_key.split(',')
-            writes.append(rand_write(stream_id, key))
-        self.submit(first_version, [], writes, [])
-        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
-            self.next_tx_seq) == "VersionConfliction")
-        self.next_tx_seq += 1
-
-        writes = writes[:1]
-        reads = []
-        for stream_id_key, value in self.data.items():
-            stream_id, key = stream_id_key.split(',')
-            reads.append([stream_id, key])
-        self.submit(first_version, reads, writes, [])
-        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
-            self.next_tx_seq) == "VersionConfliction")
-        self.next_tx_seq += 1
-
-        # write but invalid format
-        writes = []
-        for stream_id_key, value in self.data.items():
-            stream_id, key = stream_id_key.split(',')
-            writes.append(rand_write(stream_id, key))
-        self.submit(MAX_U64, [], writes, [], trunc=True)
-        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
-            self.next_tx_seq) == "DataParseError: Invalid stream data")
-        self.next_tx_seq += 1
-
-        # write but permission denied
-        self.submit(MAX_U64, [], writes, [], tx_params=TX_PARAMS1)
-        wait_until(lambda: is_write_permission_denied(
-            self.kv_nodes[0].kv_get_trasanction_result(self.next_tx_seq)))
-        self.next_tx_seq += 1
-
-        # check data
-        for stream_id_key, value in self.data.items():
-            stream_id, key = stream_id_key.split(',')
-            self.kv_nodes[0].check_equal(stream_id, key, value)
-
-        # overwrite, write same key multiple times in one tx
-        writes = []
-        reads = []
-        for stream_id_key, value in self.data.items():
-            stream_id, key = stream_id_key.split(',')
-            for _ in range(random.randrange(3, 10)):
-                writes.append(rand_write(stream_id, key))
-            reads.append([stream_id, key])
-        random.shuffle(writes)
-        self.submit(second_version, [], writes, [])
-        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
-            self.next_tx_seq) == "Commit")
-        third_version = self.next_tx_seq
-        self.next_tx_seq += 1
-        for stream_id_key, value in self.data.items():
-            stream_id, key = stream_id_key.split(',')
-            self.kv_nodes[0].check_equal(
-                stream_id, key, value, third_version - 1)
-        self.update_data(writes)
-        for stream_id_key, value in self.data.items():
-            stream_id, key = stream_id_key.split(',')
-            self.kv_nodes[0].check_equal(stream_id, key, value)
-
-
 if __name__ == "__main__":
-    KVPutGetTest(blockchain_node_configs=dict(
+    KVRecoveryTest(blockchain_node_configs=dict(
         [(0, dict(mode="dev",dev_block_interval_ms=50))])).main()

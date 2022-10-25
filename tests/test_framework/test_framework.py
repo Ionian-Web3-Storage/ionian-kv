@@ -34,14 +34,14 @@ TEST_EXIT_FAILED = 1
 
 
 class TestFramework:
-    def __init__(self, blockchain_node_type=BlockChainNodeType.BSC):
+    def __init__(self, blockchain_node_type=BlockChainNodeType.Conflux, blockchain_node_configs={}):
         self.num_blockchain_nodes = None
         self.num_nodes = None
         self.blockchain_nodes = []
         self.nodes = []
         self.kv_nodes = []
         self.contract = None
-        self.blockchain_node_configs = {}
+        self.blockchain_node_configs = blockchain_node_configs
         self.ionian_node_configs = {}
         self.blockchain_node_type = blockchain_node_type
 
@@ -402,9 +402,15 @@ class TestFramework:
 
         for node in self.blockchain_nodes:
             node.stop()
+    
+    def stop_kv_node(self, index):
+        self.kv_nodes[index].stop()
 
     def stop_storage_node(self, index):
         self.nodes[index].stop()
+
+    def start_kv_node(self, index):
+        self.kv_nodes[index].start()
 
     def start_storage_node(self, index):
         self.nodes[index].start()
