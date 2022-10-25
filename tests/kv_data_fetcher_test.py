@@ -127,4 +127,5 @@ class DataFetcherTest(TestFramework):
 
 
 if __name__ == "__main__":
-    DataFetcherTest(blockchain_node_configs=[dict(dev_block_interval_ms=50)]).main()
+    DataFetcherTest(blockchain_node_configs=dict(
+        [(0, dict(dev_block_interval_ms=50))])).main()
