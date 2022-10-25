@@ -5,12 +5,10 @@ use shared_types::{
     AccessControlSet, Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot,
     FlowRangeProof, StreamWriteSet, Transaction,
 };
-use storage::log_store::config::Configurable;
 use std::path::Path;
+use storage::log_store::config::Configurable;
 use storage::log_store::log_manager::LogConfig;
-use storage::log_store::{
-    LogStoreChunkRead, LogStoreChunkWrite, LogStoreRead, LogStoreWrite,
-};
+use storage::log_store::{LogStoreChunkRead, LogStoreChunkWrite, LogStoreRead, LogStoreWrite};
 use storage::LogManager;
 use tracing::instrument;
 
