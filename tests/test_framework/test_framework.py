@@ -402,9 +402,15 @@ class TestFramework:
 
         for node in self.blockchain_nodes:
             node.stop()
+    
+    def stop_kv_node(self, index):
+        self.kv_nodes[index].stop()
 
     def stop_storage_node(self, index):
         self.nodes[index].stop()
+
+    def start_kv_node(self, index):
+        self.kv_nodes[index].start()
 
     def start_storage_node(self, index):
         self.nodes[index].start()
