@@ -146,15 +146,19 @@ impl LogSyncManager {
 
     async fn put_tx(&mut self, tx: Transaction) -> bool {
         // We call this after process chain reorg, so the sequence number should match.
-        if tx.seq == self.next_tx_seq {
-            debug!("log entry sync get entry: {:?}", tx);
-            self.put_tx_inner(tx).await
-        } else {
-            error!(
-                "Unexpected transaction seq: next={} get={}",
-                self.next_tx_seq, tx.seq
-            );
-            false
+        match tx.seq.cmp(&self.next_tx_seq) {
+            std::cmp::Ordering::Less => true,
+            std::cmp::Ordering::Equal => {
+                debug!("log entry sync get entry: {:?}", tx);
+                self.put_tx_inner(tx).await
+            }
+            std::cmp::Ordering::Greater => {
+                error!(
+                    "Unexpected transaction seq: next={} get={}",
+                    self.next_tx_seq, tx.seq
+                );
+                false
+            }
         }
     }
 

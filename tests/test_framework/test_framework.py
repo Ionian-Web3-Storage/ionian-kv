@@ -34,7 +34,7 @@ TEST_EXIT_FAILED = 1
 
 
 class TestFramework:
-    def __init__(self, blockchain_node_type=BlockChainNodeType.BSC):
+    def __init__(self, blockchain_node_type=BlockChainNodeType.Conflux):
         self.num_blockchain_nodes = None
         self.num_nodes = None
         self.blockchain_nodes = []
