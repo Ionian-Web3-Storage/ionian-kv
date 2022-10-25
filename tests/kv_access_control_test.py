@@ -334,4 +334,4 @@ class KVAccessControlTest(TestFramework):
 
 
 if __name__ == "__main__":
-    KVAccessControlTest().main()
+    KVAccessControlTest(blockchain_node_configs=[dict(dev_block_interval_ms=50)]).main()

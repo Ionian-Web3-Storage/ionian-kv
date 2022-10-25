@@ -162,4 +162,4 @@ class KVPutGetTest(TestFramework):
 
 
 if __name__ == "__main__":
-    KVPutGetTest().main()
+    KVPutGetTest(blockchain_node_configs=[dict(dev_block_interval_ms=50)]).main()
