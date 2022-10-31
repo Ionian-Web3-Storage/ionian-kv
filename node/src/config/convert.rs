@@ -74,6 +74,9 @@ impl IonianKVConfig {
             self.confirmation_block_count,
             cache_config,
             self.log_page_size,
+            self.rate_limit_retries,
+            self.timeout_retries,
+            self.initial_backoff,
         ))
     }
 }
