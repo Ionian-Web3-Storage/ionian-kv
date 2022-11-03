@@ -184,7 +184,7 @@ impl StreamReplayer {
         if key_size == 0 {
             bail!(ParseError::InvalidData);
         }
-        Ok(stream_reader.next(key_size).await?)
+        stream_reader.next(key_size).await
     }
 
     async fn parse_stream_read_set(

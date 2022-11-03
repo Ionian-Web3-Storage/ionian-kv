@@ -2,7 +2,7 @@ use ethereum_types::{H160, H256};
 use jsonrpsee::core::RpcResult;
 use jsonrpsee::proc_macros::rpc;
 
-use crate::types::{ValueSegment, Segment};
+use crate::types::{Segment, ValueSegment};
 
 #[rpc(server, client, namespace = "kv")]
 pub trait KeyValueRpc {
