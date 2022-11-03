@@ -84,7 +84,7 @@ class KVNode(TestNode):
                 ), value[i:])
             i += bytes_per_query
 
-    def hex_to_segment(x):
+    def hex_to_segment(self, x):
         return base64.b64encode(bytes.fromhex(x)).decode("utf-8")
 
     # rpc
