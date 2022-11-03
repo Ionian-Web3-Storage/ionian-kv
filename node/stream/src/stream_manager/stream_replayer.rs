@@ -177,8 +177,13 @@ impl StreamReplayer {
     }
 
     async fn parse_key(&self, stream_reader: &mut StreamReader<'_>) -> Result<Vec<u8>> {
-        let key_size =
-            u64::from_be_bytes(stream_reader.next(VERSION_SIZE).await?.try_into().unwrap());
+        let key_size = u64::from_be_bytes(
+            stream_reader
+                .next(STREAM_KEY_LEN_SIZE)
+                .await?
+                .try_into()
+                .unwrap(),
+        );
         // key should not be empty
         if key_size == 0 {
             bail!(ParseError::InvalidData);
@@ -190,13 +195,7 @@ impl StreamReplayer {
         &self,
         stream_reader: &mut StreamReader<'_>,
     ) -> Result<StreamReadSet> {
-        let size = u32::from_be_bytes(
-            stream_reader
-                .next(STREAM_KEY_LEN_SIZE)
-                .await?
-                .try_into()
-                .unwrap(),
-        );
+        let size = u32::from_be_bytes(stream_reader.next(SET_LEN_SIZE).await?.try_into().unwrap());
         if size > MAX_SIZE_LEN {
             bail!(ParseError::ListTooLong);
         }
@@ -471,11 +470,6 @@ impl StreamReplayer {
         let mut stream_reader = StreamReader::new(self.store.clone(), tx);
         // parse and validate
         let version = self.parse_version(&mut stream_reader).await?;
-        info!("version: {:?}", version);
-        info!(
-            "current position in Byte: {:?}",
-            stream_reader.current_position_in_bytes()
-        );
         let stream_read_set = match self.parse_stream_read_set(&mut stream_reader).await {
             Ok(x) => x,
             Err(e) => match e.downcast_ref::<ParseError>() {
@@ -487,11 +481,6 @@ impl StreamReplayer {
                 }
             },
         };
-        info!("stream_read_set: {:?}", stream_read_set);
-        info!(
-            "current position in Byte: {:?}",
-            stream_reader.current_position_in_bytes()
-        );
         if let Some(result) = self
             .validate_stream_read_set(&stream_read_set, tx, version)
             .await?
@@ -510,11 +499,6 @@ impl StreamReplayer {
                 }
             },
         };
-        info!("stream_write_set: {:?}", stream_write_set);
-        info!(
-            "current position in Byte: {:?}",
-            stream_reader.current_position_in_bytes()
-        );
         if let Some(result) = self
             .validate_stream_write_set(&stream_write_set, tx, version)
             .await?
@@ -534,11 +518,6 @@ impl StreamReplayer {
                     }
                 },
             };
-        info!("access_control_set: {:?}", access_control_set);
-        info!(
-            "current position in Byte: {:?}",
-            stream_reader.current_position_in_bytes()
-        );
         if let Some(result) = self
             .validate_access_control_set(&mut access_control_set, tx)
             .await?
