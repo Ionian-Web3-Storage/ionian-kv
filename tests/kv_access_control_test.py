@@ -6,7 +6,7 @@ from os import access
 import random
 from test_framework.test_framework import TestFramework
 from utility.kv import (MAX_U64, op_with_address, op_with_key, STREAM_DOMAIN, with_prefix, is_access_control_permission_denied, is_write_permission_denied,
-                        MAX_STREAM_ID, pad, to_key, to_stream_id, create_kv_data, AccessControlOps, rand_key, rand_write)
+                        MAX_STREAM_ID, pad, to_key_with_size, to_stream_id, create_kv_data, AccessControlOps, rand_key, rand_write)
 from utility.submission import submit_data
 from utility.submission import create_submission
 from utility.utils import (

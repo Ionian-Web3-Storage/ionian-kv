@@ -6,6 +6,7 @@ use shared_types::{
     FlowRangeProof, StreamWriteSet, Transaction,
 };
 use std::path::Path;
+use std::sync::Arc;
 use storage::log_store::config::Configurable;
 use storage::log_store::log_manager::LogConfig;
 use storage::log_store::{LogStoreChunkRead, LogStoreChunkWrite, LogStoreRead, LogStoreWrite};
@@ -224,7 +225,7 @@ impl StreamRead for StoreManager {
     async fn get_latest_version_before(
         &self,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         before: u64,
     ) -> Result<u64> {
         self.stream_store
@@ -236,7 +237,7 @@ impl StreamRead for StoreManager {
         &self,
         account: H160,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         version: u64,
     ) -> Result<bool> {
         self.stream_store
@@ -254,7 +255,12 @@ impl StreamRead for StoreManager {
             .await
     }
 
-    async fn is_special_key(&self, stream_id: H256, key: H256, version: u64) -> Result<bool> {
+    async fn is_special_key(
+        &self,
+        stream_id: H256,
+        key: Arc<Vec<u8>>,
+        version: u64,
+    ) -> Result<bool> {
         self.stream_store
             .is_special_key(stream_id, key, version)
             .await
@@ -264,7 +270,7 @@ impl StreamRead for StoreManager {
         &self,
         account: H160,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         version: u64,
     ) -> Result<bool> {
         self.stream_store
@@ -286,7 +292,7 @@ impl StreamRead for StoreManager {
     async fn get_stream_key_value(
         &self,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         version: u64,
     ) -> Result<Option<(shared_types::StreamWrite, u64)>> {
         self.stream_store

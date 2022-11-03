@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use ethereum_types::{H160, H256};
 use shared_types::{AccessControlSet, StreamWriteSet, Transaction};
@@ -41,7 +43,7 @@ pub trait StreamRead {
     async fn get_latest_version_before(
         &self,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         before: u64,
     ) -> Result<u64>;
 
@@ -49,7 +51,7 @@ pub trait StreamRead {
         &self,
         account: H160,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         version: u64,
     ) -> Result<bool>;
 
@@ -57,13 +59,18 @@ pub trait StreamRead {
 
     async fn is_admin(&self, account: H160, stream_id: H256, version: u64) -> Result<bool>;
 
-    async fn is_special_key(&self, stream_id: H256, key: H256, version: u64) -> Result<bool>;
+    async fn is_special_key(
+        &self,
+        stream_id: H256,
+        key: Arc<Vec<u8>>,
+        version: u64,
+    ) -> Result<bool>;
 
     async fn is_writer_of_key(
         &self,
         account: H160,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         version: u64,
     ) -> Result<bool>;
 
@@ -77,7 +84,7 @@ pub trait StreamRead {
     async fn get_stream_key_value(
         &self,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         version: u64,
     ) -> Result<Option<(shared_types::StreamWrite, u64)>>;
 }

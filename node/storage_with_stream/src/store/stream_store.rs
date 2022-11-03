@@ -2,7 +2,7 @@ use anyhow::{bail, Result};
 use ethereum_types::{H160, H256};
 use shared_types::{AccessControlSet, StreamWrite, StreamWriteSet};
 use ssz::{Decode, Encode};
-use std::path::Path;
+use std::{path::Path, sync::Arc};
 
 use rusqlite::named_params;
 use tokio_rusqlite::Connection;
@@ -175,7 +175,7 @@ impl StreamStore {
     pub async fn get_latest_version_before(
         &self,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         before: u64,
     ) -> Result<u64> {
         self.connection
@@ -185,7 +185,7 @@ impl StreamStore {
                 let mut rows = stmt.query_map(
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
-                        ":key": key.as_ssz_bytes(),
+                        ":key": key,
                         ":before": convert_to_i64(before),
                     },
                     |row| row.get(0),
@@ -227,14 +227,19 @@ impl StreamStore {
             .await
     }
 
-    pub async fn is_special_key(&self, stream_id: H256, key: H256, version: u64) -> Result<bool> {
+    pub async fn is_special_key(
+        &self,
+        stream_id: H256,
+        key: Arc<Vec<u8>>,
+        version: u64,
+    ) -> Result<bool> {
         self.connection
             .call(move |conn| {
                 let mut stmt = conn.prepare(SqliteDBStatements::IS_SPECIAL_KEY_STATEMENT)?;
                 let mut rows = stmt.query_map(
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
-                        ":key": key.as_ssz_bytes(),
+                        ":key": key,
                         ":version": convert_to_i64(version),
                     },
                     |row| row.get(0),
@@ -288,7 +293,7 @@ impl StreamStore {
         &self,
         account: H160,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         version: u64,
     ) -> Result<bool> {
         self.connection
@@ -297,7 +302,7 @@ impl StreamStore {
                 let mut rows = stmt.query_map(
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
-                        ":key": key.as_ssz_bytes(),
+                        ":key": key,
                         ":account": account.as_ssz_bytes(),
                         ":version": convert_to_i64(version),
                     },
@@ -357,7 +362,7 @@ impl StreamStore {
         &self,
         account: H160,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         version: u64,
     ) -> Result<bool> {
         if self.is_new_stream(stream_id, version).await? {
@@ -366,8 +371,8 @@ impl StreamStore {
         if self.is_admin(account, stream_id, version).await? {
             return Ok(true);
         }
-        if self.is_special_key(stream_id, key, version).await? {
-            self.is_writer_of_key(account, stream_id, key, version)
+        if self.is_special_key(stream_id, key.clone(), version).await? {
+            self.is_writer_of_key(account, stream_id, key.clone(), version)
                 .await
         } else {
             self.is_writer_of_stream(account, stream_id, version).await
@@ -403,7 +408,7 @@ impl StreamStore {
                             SqliteDBStatements::PUT_STREAM_WRITE_STATEMENT,
                             named_params! {
                                 ":stream_id": stream_write.stream_id.as_ssz_bytes(),
-                                ":key": stream_write.key.as_ssz_bytes(),
+                                ":key": stream_write.key,
                                 ":version": convert_to_i64(version),
                                 ":start_index": stream_write.start_index,
                                 ":end_index": stream_write.end_index
@@ -415,7 +420,7 @@ impl StreamStore {
                             SqliteDBStatements::PUT_ACCESS_CONTROL_STATEMENT,
                             named_params! {
                                 ":stream_id": access_control.stream_id.as_ssz_bytes(),
-                                ":key": access_control.key.as_ssz_bytes(),
+                                ":key": access_control.key,
                                 ":version": convert_to_i64(version),
                                 ":account": access_control.account.as_ssz_bytes(),
                                 ":op_type": access_control.op_type,
@@ -440,7 +445,7 @@ impl StreamStore {
     pub async fn get_stream_key_value(
         &self,
         stream_id: H256,
-        key: H256,
+        key: Arc<Vec<u8>>,
         version: u64,
     ) -> Result<Option<(StreamWrite, u64)>> {
         self.connection
@@ -449,14 +454,14 @@ impl StreamStore {
                 let mut rows = stmt.query_map(
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
-                        ":key": key.as_ssz_bytes(),
+                        ":key": key,
                         ":version": convert_to_i64(version),
                     },
                     |row| {
                         Ok((
                             StreamWrite {
                                 stream_id,
-                                key,
+                                key: key.clone(),
                                 start_index: row.get(1)?,
                                 end_index: row.get(2)?,
                             },
