@@ -41,6 +41,9 @@ enum ReplayResult {
 }
 
 fn truncated_key(key: &[u8]) -> String {
+    if key.is_empty() {
+        return "NONE".to_owned();
+    }
     let key_str = str::from_utf8(key).unwrap_or("UNKNOWN");
     match key_str.char_indices().nth(32) {
         None => key_str.to_owned(),
