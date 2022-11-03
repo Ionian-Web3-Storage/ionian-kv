@@ -179,6 +179,10 @@ impl StreamReplayer {
     async fn parse_key(&self, stream_reader: &mut StreamReader<'_>) -> Result<Vec<u8>> {
         let key_size =
             u64::from_be_bytes(stream_reader.next(VERSION_SIZE).await?.try_into().unwrap());
+        // key should not be empty
+        if key_size == 0 {
+            bail!(ParseError::InvalidData);
+        }
         Ok(stream_reader.next(key_size).await?)
     }
 
