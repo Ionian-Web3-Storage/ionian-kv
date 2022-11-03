@@ -241,32 +241,35 @@ impl StreamReplayer {
         if size > MAX_SIZE_LEN {
             bail!(ParseError::ListTooLong);
         }
-        let stream_write_info_length = size as u64 * (32 + 32 + 8);
-        let mut write_data_start_index =
-            stream_reader.current_position_in_bytes() + stream_write_info_length;
-        // use a hashmap to filter out the duplicate writes on same key, only the last one is reserved
-        let mut stream_writes = HashMap::new();
+        // load metadata
+        let mut stream_write_metadata = vec![];
         for _ in 0..(size as usize) {
             let stream_id = H256::from_ssz_bytes(&stream_reader.next(STREAM_ID_SIZE).await?)
                 .map_err(Error::from)?;
             let key = Arc::new(self.parse_key(stream_reader).await?);
-            let start_index = write_data_start_index;
-            let end_index = write_data_start_index
-                + u64::from_be_bytes(stream_reader.next(DATA_LEN_SIZE).await?.try_into().unwrap());
+            let data_size =
+                u64::from_be_bytes(stream_reader.next(DATA_LEN_SIZE).await?.try_into().unwrap());
+            stream_write_metadata.push((stream_id, key, data_size));
+        }
+        // use a hashmap to filter out the duplicate writes on same key, only the last one is reserved
+        let mut start_index = stream_reader.current_position_in_bytes();
+        let mut stream_writes = HashMap::new();
+        for (stream_id, key, data_size) in stream_write_metadata.iter() {
+            let end_index = start_index + data_size;
             stream_writes.insert(
                 (stream_id, key.clone()),
                 StreamWrite {
-                    stream_id,
+                    stream_id: *stream_id,
                     key: key.clone(),
                     start_index,
                     end_index,
                 },
             );
-            write_data_start_index = end_index;
+            start_index = end_index;
         }
         // skip the write data
         stream_reader
-            .skip(write_data_start_index - stream_reader.current_position_in_bytes())
+            .skip(start_index - stream_reader.current_position_in_bytes())
             .await?;
         Ok(StreamWriteSet {
             stream_writes: stream_writes.into_values().collect(),
