@@ -2,7 +2,7 @@ use ethereum_types::{H160, H256};
 use jsonrpsee::core::RpcResult;
 use jsonrpsee::proc_macros::rpc;
 
-use crate::types::ValueSegment;
+use crate::types::{ValueSegment, Segment};
 
 #[rpc(server, client, namespace = "kv")]
 pub trait KeyValueRpc {
@@ -13,7 +13,7 @@ pub trait KeyValueRpc {
     async fn get_value(
         &self,
         stream_id: H256,
-        key: Vec<u8>,
+        key: Segment,
         start_index: u64,
         len: u64,
         version: Option<u64>,
@@ -30,7 +30,7 @@ pub trait KeyValueRpc {
         &self,
         account: H160,
         stream_id: H256,
-        key: Vec<u8>,
+        key: Segment,
         version: Option<u64>,
     ) -> RpcResult<bool>;
 
@@ -46,7 +46,7 @@ pub trait KeyValueRpc {
     async fn is_special_key(
         &self,
         stream_id: H256,
-        key: Vec<u8>,
+        key: Segment,
         version: Option<u64>,
     ) -> RpcResult<bool>;
 
@@ -55,7 +55,7 @@ pub trait KeyValueRpc {
         &self,
         account: H160,
         stream_id: H256,
-        key: Vec<u8>,
+        key: Segment,
         version: Option<u64>,
     ) -> RpcResult<bool>;
 
