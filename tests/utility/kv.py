@@ -103,7 +103,7 @@ def to_stream_id(x):
 
 
 def to_key_with_size(x):
-    size = pad(len(x), 6)
+    size = pad(len(x) // 2, 6)
     return size + x
 
 
