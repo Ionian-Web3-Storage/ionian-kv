@@ -9,6 +9,7 @@ use shared_types::{
 use ssz::Decode;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
+use std::str;
 use std::{cmp, sync::Arc, time::Duration};
 use storage_with_stream::error::Error;
 use storage_with_stream::log_store::log_manager::ENTRY_SIZE;
@@ -21,7 +22,7 @@ use super::RETRY_WAIT_MS;
 
 const MAX_LOAD_ENTRY_SIZE: u64 = 10;
 const STREAM_ID_SIZE: u64 = 32;
-const STREAM_KEY_SIZE: u64 = 32;
+const STREAM_KEY_LEN_SIZE: u64 = 3;
 const SET_LEN_SIZE: u64 = 4;
 const DATA_LEN_SIZE: u64 = 8;
 const VERSION_SIZE: u64 = 8;
@@ -34,9 +35,20 @@ enum ReplayResult {
     DataParseError(String),
     VersionConfliction,
     TagsMismatch,
-    WritePermissionDenied(H256, H256),
-    AccessControlPermissionDenied(u8, H256, H256, H160),
+    WritePermissionDenied(H256, Arc<Vec<u8>>),
+    AccessControlPermissionDenied(u8, H256, Arc<Vec<u8>>, H160),
     DataUnavailable,
+}
+
+fn truncated_key(key: &[u8]) -> String {
+    if key.is_empty() {
+        return "NONE".to_owned();
+    }
+    let key_str = str::from_utf8(key).unwrap_or("UNKNOWN");
+    match key_str.char_indices().nth(32) {
+        None => key_str.to_owned(),
+        Some((idx, _)) => key_str[0..idx].to_owned(),
+    }
 }
 
 impl fmt::Display for ReplayResult {
@@ -48,16 +60,17 @@ impl fmt::Display for ReplayResult {
             ReplayResult::TagsMismatch => write!(f, "TagsMismatch"),
             ReplayResult::WritePermissionDenied(stream_id, key) => write!(
                 f,
-                "WritePermissionDenied: stream: {:?}, key: {:?}",
-                stream_id, key
+                "WritePermissionDenied: stream: {:?}, key: {}",
+                stream_id,
+                truncated_key(key),
             ),
             ReplayResult::AccessControlPermissionDenied(op_type, stream_id, key, account) => {
                 write!(
                     f,
-                    "AccessControlPermissionDenied: operation: {}, stream: {:?}, key: {:?}, account: {:?}",
+                    "AccessControlPermissionDenied: operation: {}, stream: {:?}, key: {}, account: {:?}",
                     to_access_control_op_name(*op_type),
                     stream_id,
-                    key,
+                    truncated_key(key),
                     account
                 )
             }
@@ -166,6 +179,17 @@ impl StreamReplayer {
         ))
     }
 
+    async fn parse_key(&self, stream_reader: &mut StreamReader<'_>) -> Result<Vec<u8>> {
+        let mut key_size_in_bytes = vec![0x0; (8 - STREAM_KEY_LEN_SIZE) as usize];
+        key_size_in_bytes.append(&mut stream_reader.next(STREAM_KEY_LEN_SIZE).await?);
+        let key_size = u64::from_be_bytes(key_size_in_bytes.try_into().unwrap());
+        // key should not be empty
+        if key_size == 0 {
+            bail!(ParseError::InvalidData);
+        }
+        stream_reader.next(key_size).await
+    }
+
     async fn parse_stream_read_set(
         &self,
         stream_reader: &mut StreamReader<'_>,
@@ -181,8 +205,7 @@ impl StreamReplayer {
             stream_read_set.stream_reads.push(StreamRead {
                 stream_id: H256::from_ssz_bytes(&stream_reader.next(STREAM_ID_SIZE).await?)
                     .map_err(Error::from)?,
-                key: H256::from_ssz_bytes(&stream_reader.next(STREAM_KEY_SIZE).await?)
-                    .map_err(Error::from)?,
+                key: Arc::new(self.parse_key(stream_reader).await?),
             });
         }
         Ok(stream_read_set)
@@ -203,7 +226,7 @@ impl StreamReplayer {
                 .store
                 .read()
                 .await
-                .get_latest_version_before(stream_read.stream_id, stream_read.key, tx.seq)
+                .get_latest_version_before(stream_read.stream_id, stream_read.key.clone(), tx.seq)
                 .await?
                 > version
             {
@@ -221,33 +244,35 @@ impl StreamReplayer {
         if size > MAX_SIZE_LEN {
             bail!(ParseError::ListTooLong);
         }
-        let stream_write_info_length = size as u64 * (32 + 32 + 8);
-        let mut write_data_start_index =
-            stream_reader.current_position_in_bytes() + stream_write_info_length;
-        // use a hashmap to filter out the duplicate writes on same key, only the last one is reserved
-        let mut stream_writes = HashMap::new();
+        // load metadata
+        let mut stream_write_metadata = vec![];
         for _ in 0..(size as usize) {
             let stream_id = H256::from_ssz_bytes(&stream_reader.next(STREAM_ID_SIZE).await?)
                 .map_err(Error::from)?;
-            let key = H256::from_ssz_bytes(&stream_reader.next(STREAM_KEY_SIZE).await?)
-                .map_err(Error::from)?;
-            let start_index = write_data_start_index;
-            let end_index = write_data_start_index
-                + u64::from_be_bytes(stream_reader.next(DATA_LEN_SIZE).await?.try_into().unwrap());
+            let key = Arc::new(self.parse_key(stream_reader).await?);
+            let data_size =
+                u64::from_be_bytes(stream_reader.next(DATA_LEN_SIZE).await?.try_into().unwrap());
+            stream_write_metadata.push((stream_id, key, data_size));
+        }
+        // use a hashmap to filter out the duplicate writes on same key, only the last one is reserved
+        let mut start_index = stream_reader.current_position_in_bytes();
+        let mut stream_writes = HashMap::new();
+        for (stream_id, key, data_size) in stream_write_metadata.iter() {
+            let end_index = start_index + data_size;
             stream_writes.insert(
-                (stream_id, key),
+                (stream_id, key.clone()),
                 StreamWrite {
-                    stream_id,
-                    key,
+                    stream_id: *stream_id,
+                    key: key.clone(),
                     start_index,
                     end_index,
                 },
             );
-            write_data_start_index = end_index;
+            start_index = end_index;
         }
         // skip the write data
         stream_reader
-            .skip(write_data_start_index - stream_reader.current_position_in_bytes())
+            .skip(start_index - stream_reader.current_position_in_bytes())
             .await?;
         Ok(StreamWriteSet {
             stream_writes: stream_writes.into_values().collect(),
@@ -269,7 +294,7 @@ impl StreamReplayer {
             }
             // check version confiction
             if store_read
-                .get_latest_version_before(stream_write.stream_id, stream_write.key, tx.seq)
+                .get_latest_version_before(stream_write.stream_id, stream_write.key.clone(), tx.seq)
                 .await?
                 > version
             {
@@ -277,12 +302,17 @@ impl StreamReplayer {
             }
             // check write permission
             if !(store_read
-                .has_write_permission(tx.sender, stream_write.stream_id, stream_write.key, tx.seq)
+                .has_write_permission(
+                    tx.sender,
+                    stream_write.stream_id,
+                    stream_write.key.clone(),
+                    tx.seq,
+                )
                 .await?)
             {
                 return Ok(Some(ReplayResult::WritePermissionDenied(
                     stream_write.stream_id,
-                    stream_write.key,
+                    stream_write.key.clone(),
                 )));
             }
         }
@@ -310,7 +340,7 @@ impl StreamReplayer {
                 let op_meta = (
                     AccessControlOps::GRANT_ADMIN_ROLE & 0xf0,
                     *id,
-                    H256::zero(),
+                    Arc::new(vec![]),
                     tx.sender,
                 );
                 access_ops.insert(
@@ -318,7 +348,7 @@ impl StreamReplayer {
                     AccessControl {
                         op_type: AccessControlOps::GRANT_ADMIN_ROLE,
                         stream_id: *id,
-                        key: H256::zero(),
+                        key: Arc::new(vec![]),
                         account: tx.sender,
                         operator: H160::zero(),
                     },
@@ -342,7 +372,7 @@ impl StreamReplayer {
             let stream_id = H256::from_ssz_bytes(&stream_reader.next(STREAM_ID_SIZE).await?)
                 .map_err(Error::from)?;
             let mut account = H160::zero();
-            let mut key = H256::zero();
+            let mut key = Arc::new(vec![]);
             match op_type {
                 // stream_id + account
                 AccessControlOps::GRANT_ADMIN_ROLE
@@ -353,14 +383,12 @@ impl StreamReplayer {
                 }
                 // stream_id + key
                 AccessControlOps::SET_KEY_TO_NORMAL | AccessControlOps::SET_KEY_TO_SPECIAL => {
-                    key = H256::from_ssz_bytes(&stream_reader.next(STREAM_KEY_SIZE).await?)
-                        .map_err(Error::from)?;
+                    key = Arc::new(self.parse_key(stream_reader).await?);
                 }
                 // stream_id + key + account
                 AccessControlOps::GRANT_SPECIAL_WRITER_ROLE
                 | AccessControlOps::REVOKE_SPECIAL_WRITER_ROLE => {
-                    key = H256::from_ssz_bytes(&stream_reader.next(STREAM_KEY_SIZE).await?)
-                        .map_err(Error::from)?;
+                    key = Arc::new(self.parse_key(stream_reader).await?);
                     account = H160::from_ssz_bytes(&stream_reader.next(ADDRESS_SIZE).await?)
                         .map_err(Error::from)?;
                 }
@@ -369,8 +397,7 @@ impl StreamReplayer {
                     account = tx.sender;
                 }
                 AccessControlOps::RENOUNCE_SPECIAL_WRITER_ROLE => {
-                    key = H256::from_ssz_bytes(&stream_reader.next(STREAM_KEY_SIZE).await?)
-                        .map_err(Error::from)?;
+                    key = Arc::new(self.parse_key(stream_reader).await?);
                     account = tx.sender;
                 }
                 // unexpected type
@@ -378,7 +405,7 @@ impl StreamReplayer {
                     bail!(ParseError::InvalidData);
                 }
             }
-            let op_meta = (op_type & 0xf0, stream_id, key, account);
+            let op_meta = (op_type & 0xf0, stream_id, key.clone(), account);
             if op_type != AccessControlOps::GRANT_ADMIN_ROLE
                 || (!access_ops.contains_key(&op_meta) && account != tx.sender)
             {
@@ -387,7 +414,7 @@ impl StreamReplayer {
                     AccessControl {
                         op_type,
                         stream_id,
-                        key,
+                        key: key.clone(),
                         account,
                         operator: tx.sender,
                     },
@@ -427,7 +454,7 @@ impl StreamReplayer {
                         return Ok(Some(ReplayResult::AccessControlPermissionDenied(
                             access_control.op_type,
                             access_control.stream_id,
-                            access_control.key,
+                            access_control.key.clone(),
                             access_control.account,
                         )));
                     }
@@ -445,11 +472,6 @@ impl StreamReplayer {
         let mut stream_reader = StreamReader::new(self.store.clone(), tx);
         // parse and validate
         let version = self.parse_version(&mut stream_reader).await?;
-        info!("version: {:?}", version);
-        info!(
-            "current position in Byte: {:?}",
-            stream_reader.current_position_in_bytes()
-        );
         let stream_read_set = match self.parse_stream_read_set(&mut stream_reader).await {
             Ok(x) => x,
             Err(e) => match e.downcast_ref::<ParseError>() {
@@ -461,11 +483,6 @@ impl StreamReplayer {
                 }
             },
         };
-        info!("stream_read_set: {:?}", stream_read_set);
-        info!(
-            "current position in Byte: {:?}",
-            stream_reader.current_position_in_bytes()
-        );
         if let Some(result) = self
             .validate_stream_read_set(&stream_read_set, tx, version)
             .await?
@@ -484,11 +501,6 @@ impl StreamReplayer {
                 }
             },
         };
-        info!("stream_write_set: {:?}", stream_write_set);
-        info!(
-            "current position in Byte: {:?}",
-            stream_reader.current_position_in_bytes()
-        );
         if let Some(result) = self
             .validate_stream_write_set(&stream_write_set, tx, version)
             .await?
@@ -508,11 +520,6 @@ impl StreamReplayer {
                     }
                 },
             };
-        info!("access_control_set: {:?}", access_control_set);
-        info!(
-            "current position in Byte: {:?}",
-            stream_reader.current_position_in_bytes()
-        );
         if let Some(result) = self
             .validate_access_control_set(&mut access_control_set, tx)
             .await?

@@ -1,4 +1,7 @@
+use std::sync::Arc;
+
 use crate::error;
+use crate::types::Segment;
 use crate::types::ValueSegment;
 use crate::Context;
 use ethereum_types::H160;
@@ -23,7 +26,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
     async fn get_value(
         &self,
         stream_id: H256,
-        key: H256,
+        key: Segment,
         start_index: u64,
         len: u64,
         version: Option<u64>,
@@ -38,7 +41,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
 
         let store_read = self.ctx.store.read().await;
         if let Some((stream_write, latest_version)) = store_read
-            .get_stream_key_value(stream_id, key, before_version)
+            .get_stream_key_value(stream_id, Arc::new(key.0), before_version)
             .await?
         {
             if start_index > stream_write.end_index - stream_write.start_index {
@@ -90,7 +93,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
         &self,
         account: H160,
         stream_id: H256,
-        key: H256,
+        key: Segment,
         version: Option<u64>,
     ) -> RpcResult<bool> {
         debug!("kv_hasWritePermission()");
@@ -102,7 +105,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             .store
             .read()
             .await
-            .has_write_permission(account, stream_id, key, before_version)
+            .has_write_permission(account, stream_id, Arc::new(key.0), before_version)
             .await?)
     }
 
@@ -128,7 +131,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
     async fn is_special_key(
         &self,
         stream_id: H256,
-        key: H256,
+        key: Segment,
         version: Option<u64>,
     ) -> RpcResult<bool> {
         debug!("kv_isSpecialKey()");
@@ -140,7 +143,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             .store
             .read()
             .await
-            .is_special_key(stream_id, key, before_version)
+            .is_special_key(stream_id, Arc::new(key.0), before_version)
             .await?)
     }
 
@@ -148,7 +151,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
         &self,
         account: H160,
         stream_id: H256,
-        key: H256,
+        key: Segment,
         version: Option<u64>,
     ) -> RpcResult<bool> {
         debug!("kv_isWriterOfKey()");
@@ -160,7 +163,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             .store
             .read()
             .await
-            .is_writer_of_key(account, stream_id, key, before_version)
+            .is_writer_of_key(account, stream_id, Arc::new(key.0), before_version)
             .await?)
     }
 

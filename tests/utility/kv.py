@@ -74,6 +74,7 @@ MAX_STREAM_ID = 100
 MAX_DATA_LENGTH = 256 * 1024 * 4
 MIN_DATA_LENGTH = 10
 MAX_U64 = (1 << 64) - 1
+MAX_KEY_LEN = 2000
 
 STREAM_DOMAIN = bytes.fromhex(
     "df2ff3bb0af36c6384e6206552a4ed807f6f6a26e7d0aa6bff772ddc9d4307aa")
@@ -101,12 +102,16 @@ def to_stream_id(x):
     return pad(x, 64)
 
 
-def to_key(x):
-    return pad(x, 64)
+def to_key_with_size(x):
+    size = pad(len(x) // 2, 6)
+    return size + x
 
 
 def rand_key():
-    return to_key(random.randrange(0, MAX_U64))
+    len = random.randrange(1, MAX_KEY_LEN)
+    if len % 2 == 1:
+        len += 1
+    return ''.join([hex(random.randrange(16))[2:] for i in range(len)])
 
 
 def rand_write(stream_id=None, key=None):
@@ -138,13 +143,13 @@ def create_kv_data(version, reads, writes, access_controls):
     data += bytes.fromhex(pad(len(reads), 8))
     for read in reads:
         data += bytes.fromhex(read[0])
-        data += bytes.fromhex(read[1])
+        data += bytes.fromhex(to_key_with_size(read[1]))
     # write set
     data += bytes.fromhex(pad(len(writes), 8))
     # write set meta
     for write in writes:
         data += bytes.fromhex(write[0])
-        data += bytes.fromhex(write[1])
+        data += bytes.fromhex(to_key_with_size(write[1]))
         data += bytes.fromhex(pad(write[2], 16))
         tags.append(write[0])
         if len(write) == 3:
@@ -166,7 +171,7 @@ def create_kv_data(version, reads, writes, access_controls):
         k += 1
         # key
         if ac[0] in op_with_key:
-            data += bytes.fromhex(ac[k])
+            data += bytes.fromhex(to_key_with_size(ac[k]))
             k += 1
         # address
         if ac[0] in op_with_address:

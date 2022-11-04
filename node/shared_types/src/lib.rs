@@ -12,6 +12,7 @@ use ssz::Encode;
 use ssz_derive::{Decode as DeriveDecode, Encode as DeriveEncode};
 use std::collections::HashSet;
 use std::hash::Hasher;
+use std::sync::Arc;
 use tiny_keccak::{Hasher as KeccakHasher, Keccak};
 use tracing::debug;
 
@@ -274,7 +275,7 @@ impl FileProof {
 #[derive(Debug)]
 pub struct StreamRead {
     pub stream_id: H256,
-    pub key: H256,
+    pub key: Arc<Vec<u8>>,
 }
 
 #[derive(Debug)]
@@ -285,7 +286,7 @@ pub struct StreamReadSet {
 #[derive(Debug)]
 pub struct StreamWrite {
     pub stream_id: H256,
-    pub key: H256,
+    pub key: Arc<Vec<u8>>,
     // start index in bytes
     pub start_index: u64,
     // end index in bytes
@@ -307,7 +308,7 @@ pub struct AccessControlSet {
 pub struct AccessControl {
     pub op_type: u8,
     pub stream_id: H256,
-    pub key: H256,
+    pub key: Arc<Vec<u8>>,
     pub account: H160,
     pub operator: H160,
 }

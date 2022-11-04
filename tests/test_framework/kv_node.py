@@ -84,9 +84,12 @@ class KVNode(TestNode):
                 ), value[i:])
             i += bytes_per_query
 
+    def hex_to_segment(self, x):
+        return base64.b64encode(bytes.fromhex(x)).decode("utf-8")
+
     # rpc
     def kv_get_value(self, stream_id, key, start_index, size, version=None):
-        return self.rpc.kv_getValue([stream_id, key, start_index, size, version])
+        return self.rpc.kv_getValue([stream_id, self.hex_to_segment(key), start_index, size, version])
 
     def kv_get_trasanction_result(self, tx_seq):
         return self.rpc.kv_getTransactionResult([tx_seq])
@@ -95,16 +98,16 @@ class KVNode(TestNode):
         return self.rpc.kv_getHoldingStreamIds()
 
     def kv_has_write_permission(self, account, stream_id, key, version=None):
-        return self.rpc.kv_hasWritePermission([account, stream_id, key, version])
+        return self.rpc.kv_hasWritePermission([account, stream_id, self.hex_to_segment(key), version])
 
     def kv_is_admin(self, account, stream_id, version=None):
         return self.rpc.kv_isAdmin([account, stream_id, version])
 
     def kv_is_special_key(self, stream_id, key, version=None):
-        return self.rpc.kv_isSpecialKey([stream_id, key, version])
+        return self.rpc.kv_isSpecialKey([stream_id, self.hex_to_segment(key), version])
 
     def kv_is_writer_of_key(self, account, stream_id, key, version=None):
-        return self.rpc.kv_isWriterOfKey([account, stream_id, key, version])
+        return self.rpc.kv_isWriterOfKey([account, stream_id, self.hex_to_segment(key), version])
 
     def kv_is_writer_of_stream(self, account, stream_id, version=None):
         return self.rpc.kv_isWriterOfStream([account, stream_id, version])
