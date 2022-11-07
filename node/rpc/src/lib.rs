@@ -41,6 +41,7 @@ pub fn ionian_clients(ctx: &Context) -> Result<Vec<HttpClient>, Box<dyn Error>> 
 
 pub async fn run_server(ctx: Context) -> Result<HttpServerHandle, Box<dyn Error>> {
     let server = HttpServerBuilder::default()
+        .max_response_body_size(ctx.config.max_response_body_in_bytes)
         .build(ctx.config.listen_address)
         .await?;
 

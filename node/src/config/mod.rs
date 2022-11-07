@@ -26,7 +26,8 @@ build_config! {
     (rpc_listen_address, (String), "127.0.0.1:5678".to_string())
     (rpc_chunks_per_segment, (usize), 1024)
     (ionian_node_urls, (String), "http://127.0.0.1:5678".to_string())
-    (max_query_len_in_bytes, (u64), 1024 * 256)
+    (max_query_len_in_bytes, (u64), 1024 * 256) // 256 KB
+    (max_response_body_in_bytes, (u32), 1024 * 1024 * 30) // 30MB
 
     // db
     (db_dir, (String), "db".to_string())

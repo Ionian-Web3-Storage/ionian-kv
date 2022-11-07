@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use ethereum_types::{H160, H256};
 use shared_types::{
     AccessControlSet, Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot,
-    FlowRangeProof, StreamWriteSet, Transaction,
+    FlowRangeProof, KeyValuePair, StreamWriteSet, Transaction,
 };
 use std::path::Path;
 use std::sync::Arc;
@@ -294,9 +294,20 @@ impl StreamRead for StoreManager {
         stream_id: H256,
         key: Arc<Vec<u8>>,
         version: u64,
-    ) -> Result<Option<(shared_types::StreamWrite, u64)>> {
+    ) -> Result<Option<KeyValuePair>> {
         self.stream_store
             .get_stream_key_value(stream_id, key, version)
+            .await
+    }
+
+    async fn get_next_stream_key_value(
+        &self,
+        stream_id: H256,
+        key: Arc<Vec<u8>>,
+        version: u64,
+    ) -> Result<Option<KeyValuePair>> {
+        self.stream_store
+            .get_next_stream_key_value(stream_id, key, version)
             .await
     }
 }

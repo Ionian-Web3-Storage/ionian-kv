@@ -313,6 +313,15 @@ pub struct AccessControl {
     pub operator: H160,
 }
 
+#[derive(Debug)]
+pub struct KeyValuePair {
+    pub stream_id: H256,
+    pub key: Vec<u8>,
+    pub start_index: u64,
+    pub end_index: u64,
+    pub version: u64,
+}
+
 impl TryFrom<&FileProof> for RawFileProof<[u8; 32]> {
     type Error = anyhow::Error;
 

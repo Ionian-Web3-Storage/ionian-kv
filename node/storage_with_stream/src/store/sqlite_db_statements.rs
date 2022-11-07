@@ -133,6 +133,14 @@ impl SqliteDBStatements {
         ORDER BY version DESC LIMIT 1
     ";
 
+    pub const GET_NEXT_KEY_VALUE_STATEMENT: &'static str = "
+        SELECT version, key, start_index, end_index FROM 
+            t_stream
+        WHERE
+            stream_id = :stream_id AND key > :key AND version <= :version
+        ORDER BY key ASC, version DESC
+    ";
+
     pub const CREATE_MISC_TABLE_STATEMENT: &'static str = "
         CREATE TABLE IF NOT EXISTS t_misc (
             id INTEGER NOT NULL PRIMARY KEY,

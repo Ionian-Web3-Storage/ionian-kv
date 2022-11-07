@@ -190,6 +190,21 @@ pub struct ValueSegment {
     pub size: u64,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyValueSegment {
+    // key version
+    pub version: u64,
+    // key
+    #[serde(with = "base64")]
+    pub key: Vec<u8>,
+    // data
+    #[serde(with = "base64")]
+    pub data: Vec<u8>,
+    // value total size
+    pub size: u64,
+}
+
 mod base64 {
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
 

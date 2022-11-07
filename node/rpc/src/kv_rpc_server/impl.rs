@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use crate::error;
+use crate::types::KeyValueSegment;
 use crate::types::Segment;
 use crate::types::ValueSegment;
 use crate::Context;
@@ -40,18 +41,81 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
         let before_version = version.unwrap_or(u64::MAX);
 
         let store_read = self.ctx.store.read().await;
-        if let Some((stream_write, latest_version)) = store_read
+        if let Some(pair) = store_read
             .get_stream_key_value(stream_id, Arc::new(key.0), before_version)
             .await?
         {
-            if start_index > stream_write.end_index - stream_write.start_index {
+            if start_index > pair.end_index - pair.start_index {
                 return Err(error::invalid_params(
                     "start_index",
                     "start index is greater than value length",
                 ));
             }
-            let start_byte_index = stream_write.start_index + start_index;
-            let end_byte_index = std::cmp::min(start_byte_index + len, stream_write.end_index);
+            let start_byte_index = pair.start_index + start_index;
+            let end_byte_index = std::cmp::min(start_byte_index + len, pair.end_index);
+            let start_entry_index = start_byte_index / ENTRY_SIZE as u64;
+            let end_entry_index = if end_byte_index % ENTRY_SIZE as u64 == 0 {
+                end_byte_index / ENTRY_SIZE as u64
+            } else {
+                end_byte_index / ENTRY_SIZE as u64 + 1
+            };
+            if start_entry_index == end_entry_index {
+                return Ok(None);
+            }
+            if let Some(entry_array) = store_read
+                .get_chunk_by_flow_index(start_entry_index, end_entry_index - start_entry_index)?
+            {
+                return Ok(Some(ValueSegment {
+                    version: pair.version,
+                    data: entry_array.data[(start_byte_index as usize
+                        - start_entry_index as usize * ENTRY_SIZE)
+                        ..(end_byte_index as usize - start_entry_index as usize * ENTRY_SIZE)
+                            as usize]
+                        .to_vec(),
+                    size: pair.end_index - pair.start_index,
+                }));
+            }
+            Ok(None)
+        } else {
+            Ok(None)
+        }
+    }
+
+    async fn get_next(
+        &self,
+        stream_id: H256,
+        key: Segment,
+        start_index: u64,
+        len: u64,
+        version: Option<u64>,
+    ) -> RpcResult<Option<KeyValueSegment>> {
+        debug!("kv_getValue()");
+
+        if len > self.ctx.config.max_query_len_in_bytes {
+            return Err(error::invalid_params("len", "query length too large"));
+        }
+
+        let before_version = version.unwrap_or(u64::MAX);
+
+        let store_read = self.ctx.store.read().await;
+        let key = Arc::new(key.0);
+        while let Some(pair) = store_read
+            .get_next_stream_key_value(stream_id, key.clone(), before_version)
+            .await?
+        {
+            // skip deleted keys
+            // TODO: resolve this in sql statements?
+            if pair.end_index == pair.start_index {
+                continue;
+            }
+            if start_index > pair.end_index - pair.start_index {
+                return Err(error::invalid_params(
+                    "start_index",
+                    "start index is greater than value length",
+                ));
+            }
+            let start_byte_index = pair.start_index + start_index;
+            let end_byte_index = std::cmp::min(start_byte_index + len, pair.end_index);
             let start_entry_index = start_byte_index / ENTRY_SIZE as u64;
             let end_entry_index = if end_byte_index % ENTRY_SIZE as u64 == 0 {
                 end_byte_index / ENTRY_SIZE as u64
@@ -61,20 +125,20 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             if let Some(entry_array) = store_read
                 .get_chunk_by_flow_index(start_entry_index, end_entry_index - start_entry_index)?
             {
-                return Ok(Some(ValueSegment {
-                    version: latest_version,
+                return Ok(Some(KeyValueSegment {
+                    version: pair.version,
+                    key: pair.key,
                     data: entry_array.data[(start_byte_index as usize
                         - start_entry_index as usize * ENTRY_SIZE)
                         ..(end_byte_index as usize - start_entry_index as usize * ENTRY_SIZE)
                             as usize]
                         .to_vec(),
-                    size: stream_write.end_index - stream_write.start_index,
+                    size: pair.end_index - pair.start_index,
                 }));
             }
-            Ok(None)
-        } else {
-            Ok(None)
+            return Ok(None);
         }
+        Ok(None)
     }
 
     async fn get_trasanction_result(&self, tx_seq: u64) -> RpcResult<Option<String>> {

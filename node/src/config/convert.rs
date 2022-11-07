@@ -53,6 +53,7 @@ impl IonianKVConfig {
             ionian_nodes: to_ionian_nodes(self.ionian_node_urls.clone())
                 .map_err(|e| format!("failed to parse ionian_node_urls: {}", e))?,
             max_query_len_in_bytes: self.max_query_len_in_bytes,
+            max_response_body_in_bytes: self.max_response_body_in_bytes,
         })
     }
 
