@@ -98,14 +98,15 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
         let before_version = version.unwrap_or(u64::MAX);
 
         let store_read = self.ctx.store.read().await;
-        let key = Arc::new(key.0);
+        let mut next_key = Arc::new(key.0);
         while let Some(pair) = store_read
-            .get_next_stream_key_value(stream_id, key.clone(), before_version)
+            .get_next_stream_key_value(stream_id, next_key.clone(), before_version)
             .await?
         {
             // skip deleted keys
             // TODO: resolve this in sql statements?
             if pair.end_index == pair.start_index {
+                next_key = Arc::new(pair.key);
                 continue;
             }
             if start_index > pair.end_index - pair.start_index {
