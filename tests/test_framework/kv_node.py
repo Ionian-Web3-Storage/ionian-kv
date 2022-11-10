@@ -10,8 +10,9 @@ from utility.utils import (
     blockchain_rpc_port,
     assert_equal
 )
-        
+
 bytes_per_query = 1024 * 256
+
 
 class KVNode(TestNode):
     def __init__(
@@ -98,11 +99,12 @@ class KVNode(TestNode):
             'data': b''
         }
         while True:
-            res = self.kv_get_next(stream_id, key, start_index, bytes_per_query, version)
+            res = self.kv_get_next(
+                stream_id, key, start_index, bytes_per_query, version)
             if res is None:
                 return None
-            ans['size'] = res.size
-            ans['key'] = base64.b64decode(res['data'].encode("utf-8")).hex()
+            ans['size'] = res['size']
+            ans['key'] = base64.b64decode(res['key'].encode("utf-8")).hex()
             ans['data'] += base64.b64decode(res['data'].encode("utf-8"))
             if len(ans['data']) == ans['size']:
                 return ans

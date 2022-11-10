@@ -87,10 +87,15 @@ class KVPutGetTest(TestFramework):
             pair = self.kv_nodes[0].next(stream_id, current_key)
             if pair is None:
                 break
+            cnt += 1
+            assert current_key < pair['key']
             current_key = pair['key']
-            value = self.data[','.join(stream_id, pair['key'])]
+            tmp = ','.join([stream_id, pair['key']])
+            assert tmp in self.data
+            value = self.data[tmp]
             assert_equal(value, pair['data'])
         assert cnt == len(self.data.items())
+
 
 if __name__ == "__main__":
     KVPutGetTest(blockchain_node_configs=dict(
