@@ -83,13 +83,13 @@ class KVPutGetTest(TestFramework):
         # iterate
         current_key = ''
         cnt = 0
-        write = []
+        writes = []
         while current_key != None:
             pair = self.kv_nodes[0].next(stream_id, current_key)
             if pair is None:
                 break
             if cnt % 2 == 0:
-                write.append(rand_write(stream_id, pair['key'], 0))
+                writes.append(rand_write(stream_id, pair['key'], 0))
             cnt += 1
             assert current_key < pair['key']
             current_key = pair['key']
