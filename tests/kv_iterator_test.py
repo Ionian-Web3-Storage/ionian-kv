@@ -83,8 +83,34 @@ class KVPutGetTest(TestFramework):
         # iterate
         current_key = ''
         cnt = 0
+        write = []
         while current_key != None:
             pair = self.kv_nodes[0].next(stream_id, current_key)
+            if pair is None:
+                break
+            if cnt % 2 == 0:
+                write.append(rand_write(stream_id, pair['key'], 0))
+            cnt += 1
+            assert current_key < pair['key']
+            current_key = pair['key']
+            tmp = ','.join([stream_id, pair['key']])
+            assert tmp in self.data
+            value = self.data[tmp]
+            assert_equal(value, pair['data'])
+        assert cnt == len(self.data.items())
+
+        # delete
+        self.submit(MAX_U64, [], writes, [])
+        wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
+            self.next_tx_seq) == "Commit")
+        second_version = self.next_tx_seq
+        self.next_tx_seq += 1
+
+        # iterate at first version
+        current_key = ''
+        cnt = 0
+        while current_key != None:
+            pair = self.kv_nodes[0].next(stream_id, current_key, first_version)
             if pair is None:
                 break
             cnt += 1
@@ -95,6 +121,24 @@ class KVPutGetTest(TestFramework):
             value = self.data[tmp]
             assert_equal(value, pair['data'])
         assert cnt == len(self.data.items())
+
+        # iterate at second version
+        current_key = ''
+        cnt = 0
+        while current_key != None:
+            pair = self.kv_nodes[0].next(
+                stream_id, current_key, second_version)
+            if pair is None:
+                break
+            cnt += 1
+            assert current_key < pair['key']
+            assert pair['size'] > 0
+            current_key = pair['key']
+            tmp = ','.join([stream_id, pair['key']])
+            assert tmp in self.data
+            value = self.data[tmp]
+            assert_equal(value, pair['data'])
+        assert cnt == 10
 
 
 if __name__ == "__main__":
