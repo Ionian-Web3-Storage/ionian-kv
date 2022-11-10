@@ -1,5 +1,6 @@
+use append_merkle::MerkleTreeInitialData;
 use ethereum_types::H256;
-use ionian_spec::{BYTES_PER_SEAL, SEALS_PER_LOADING};
+use ionian_spec::{BYTES_PER_SEAL, SEALS_PER_LOAD};
 use shared_types::{
     Chunk, ChunkArray, ChunkArrayWithProof, ChunkWithProof, DataRoot, FlowRangeProof, Transaction,
 };
@@ -147,15 +148,15 @@ pub trait LogStoreInner {
 }
 
 pub struct MineLoadChunk {
-    pub loaded_chunk: [[u8; BYTES_PER_SEAL]; SEALS_PER_LOADING],
-    pub avalibilities: [bool; SEALS_PER_LOADING],
+    pub loaded_chunk: [[u8; BYTES_PER_SEAL]; SEALS_PER_LOAD],
+    pub avalibilities: [bool; SEALS_PER_LOAD],
 }
 
 impl Default for MineLoadChunk {
     fn default() -> Self {
         Self {
-            loaded_chunk: [[0u8; BYTES_PER_SEAL]; SEALS_PER_LOADING],
-            avalibilities: [false; SEALS_PER_LOADING],
+            loaded_chunk: [[0u8; BYTES_PER_SEAL]; SEALS_PER_LOAD],
+            avalibilities: [false; SEALS_PER_LOAD],
         }
     }
 }
@@ -170,7 +171,7 @@ pub trait FlowRead {
     /// For simplicity, `index_start` and `index_end` must be at the batch boundaries.
     fn get_available_entries(&self, index_start: u64, index_end: u64) -> Result<Vec<ChunkArray>>;
 
-    fn get_chunk_root_list(&self) -> Result<Vec<(usize, DataRoot)>>;
+    fn get_chunk_root_list(&self) -> Result<MerkleTreeInitialData<DataRoot>>;
 
     fn load_sealed_data(&self, chunk_index: u64) -> Result<Option<MineLoadChunk>>;
 }

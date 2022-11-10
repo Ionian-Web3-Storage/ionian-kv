@@ -5,15 +5,17 @@ use crate::log_store::log_manager::{bytes_to_entries, COL_ENTRY_BATCH, COL_ENTRY
 use crate::log_store::{FlowRead, FlowSeal, FlowWrite};
 use crate::{try_option, IonianKeyValueDB};
 use anyhow::{anyhow, bail, Result};
-use ionian_spec::{BYTES_PER_SECTOR, SEALS_PER_LOADING, SECTORS_PER_LOADING, SECTORS_PER_SEAL};
+use append_merkle::{MerkleTreeInitialData, MerkleTreeRead};
+use ionian_spec::{BYTES_PER_SECTOR, SEALS_PER_LOAD, SECTORS_PER_LOAD, SECTORS_PER_SEAL};
 use itertools::Itertools;
-use shared_types::{ChunkArray, DataRoot};
+use shared_types::{ChunkArray, DataRoot, FlowProof};
 use ssz::{Decode, Encode};
 use ssz_derive::{Decode as DeriveDecode, Encode as DeriveEncode};
-use std::cmp;
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::fmt::Debug;
 use std::sync::Arc;
+use std::{cmp, mem};
 use tracing::{debug, trace};
 
 pub struct FlowStore {
@@ -36,8 +38,37 @@ impl FlowStore {
         }
     }
 
-    pub fn put_batch_root(&self, batch_index: u64, root: DataRoot, length: usize) -> Result<()> {
-        self.db.put_batch_root(batch_index, root, length)
+    pub fn put_batch_root_list(&self, root_map: BTreeMap<usize, (DataRoot, usize)>) -> Result<()> {
+        self.db.put_batch_root_list(root_map)
+    }
+
+    pub fn insert_subtree_list_for_batch(
+        &self,
+        batch_index: usize,
+        subtree_list: Vec<(usize, usize, DataRoot)>,
+    ) -> Result<()> {
+        let mut batch = self
+            .db
+            .get_entry_batch(batch_index as u64)?
+            .unwrap_or_else(|| EntryBatch::new(batch_index as u64));
+        batch.set_subtree_list(subtree_list);
+        self.db.put_entry_raw(vec![(batch_index as u64, batch)])?;
+
+        Ok(())
+    }
+
+    pub fn gen_proof_in_batch(&self, batch_index: usize, sector_index: usize) -> Result<FlowProof> {
+        let batch = self
+            .db
+            .get_entry_batch(batch_index as u64)?
+            .ok_or_else(|| anyhow!("batch missing, index={}", batch_index))?;
+        let merkle = batch.to_merkle_tree(batch_index == 0)?.ok_or_else(|| {
+            anyhow!(
+                "batch data incomplete for building a merkle tree, index={}",
+                batch_index
+            )
+        })?;
+        merkle.gen_proof(sector_index)
     }
 }
 
@@ -49,7 +80,7 @@ pub struct FlowConfig {
 impl Default for FlowConfig {
     fn default() -> Self {
         Self {
-            batch_size: SECTORS_PER_LOADING,
+            batch_size: SECTORS_PER_LOAD,
         }
     }
 }
@@ -114,6 +145,7 @@ impl FlowRead for FlowStore {
                 if data_list.is_empty() {
                     continue;
                 }
+                // This will not happen for now because we only get entries for the last chunk.
                 if let Some(last) = entry_list.last_mut() {
                     if last.start_index + bytes_to_entries(last.data.len() as u64)
                         == data_list[0].start_index
@@ -131,18 +163,8 @@ impl FlowRead for FlowStore {
     }
 
     /// Return the list of all stored chunk roots.
-    fn get_chunk_root_list(&self) -> Result<Vec<(usize, DataRoot)>> {
-        let mut chunk_roots = Vec::new();
-        let mut i = 0;
-        while let Some(root) = self.db.get_batch_root(i)? {
-            let subtree = match root {
-                BatchRoot::Single(r) => (1, r),
-                BatchRoot::Multiple(t) => t,
-            };
-            chunk_roots.push(subtree);
-            i += 1;
-        }
-        Ok(chunk_roots)
+    fn get_chunk_root_list(&self) -> Result<MerkleTreeInitialData<DataRoot>> {
+        self.db.get_batch_root_list()
     }
 
     fn load_sealed_data(&self, chunk_index: u64) -> Result<Option<MineLoadChunk>> {
@@ -195,7 +217,7 @@ impl FlowWrite for FlowStore {
             )?;
             completed_seals.into_iter().for_each(|x| {
                 self.to_seal_set.insert(
-                    chunk_index as usize * SEALS_PER_LOADING + x as usize,
+                    chunk_index as usize * SEALS_PER_LOAD + x as usize,
                     self.to_seal_version,
                 );
             });
@@ -206,10 +228,15 @@ impl FlowWrite for FlowStore {
     }
 
     fn truncate(&mut self, start_index: u64) -> crate::error::Result<()> {
-        self.db.truncate(start_index, self.config.batch_size)?;
+        let to_reseal = self.db.truncate(start_index, self.config.batch_size)?;
+
         self.to_seal_set
             .split_off(&(start_index as usize / SECTORS_PER_SEAL));
         self.to_seal_version += 1;
+
+        to_reseal.into_iter().for_each(|x| {
+            self.to_seal_set.insert(x, self.to_seal_version);
+        });
         Ok(())
     }
 }
@@ -222,19 +249,19 @@ impl FlowSeal for FlowStore {
             return Ok(None);
         }
 
-        let mut tasks = Vec::with_capacity(SEALS_PER_LOADING);
+        let mut tasks = Vec::with_capacity(SEALS_PER_LOAD);
 
         let batch_data = self
             .db
-            .get_entry_batch((first_index / SEALS_PER_LOADING) as u64)?
+            .get_entry_batch((first_index / SEALS_PER_LOAD) as u64)?
             .expect("Lost data chunk in to_seal_set");
 
         for (&seal_index, &version) in
             std::iter::once((&first_index, &first_version)).chain(to_seal_iter.filter(|(&x, _)| {
-                first_index / SEALS_PER_LOADING == x / SEALS_PER_LOADING && x < seal_index_max
+                first_index / SEALS_PER_LOAD == x / SEALS_PER_LOAD && x < seal_index_max
             }))
         {
-            let seal_index_local = seal_index % SEALS_PER_LOADING;
+            let seal_index_local = seal_index % SEALS_PER_LOAD;
             let non_sealed_data = batch_data
                 .get_non_sealed_data(seal_index_local as u16)
                 .expect("Lost seal chunk in to_seal_set");
@@ -260,7 +287,7 @@ impl FlowSeal for FlowStore {
         for (load_index, answers_in_chunk) in &answers
             .into_iter()
             .filter(is_consistent)
-            .group_by(|answer| answer.seal_index / SEALS_PER_LOADING as u64)
+            .group_by(|answer| answer.seal_index / SEALS_PER_LOAD as u64)
         {
             let mut batch_chunk = self
                 .db
@@ -307,10 +334,12 @@ impl FlowDBStore {
                 &batch.as_ssz_bytes(),
             );
             if let Some(root) = batch.build_root(batch_index == 0)? {
+                trace!("complete batch: index={}", batch_index);
                 tx.put(
                     COL_ENTRY_BATCH_ROOT,
-                    &batch_index.to_be_bytes(),
-                    &BatchRoot::Single(root).as_ssz_bytes(),
+                    // (batch_index, subtree_depth)
+                    &encode_batch_root_key(batch_index as usize, 1),
+                    root.as_bytes(),
                 );
                 completed_batches.push((batch_index, root));
             }
@@ -337,38 +366,107 @@ impl FlowDBStore {
         Ok(Some(EntryBatch::from_ssz_bytes(&raw).map_err(Error::from)?))
     }
 
-    pub fn put_batch_root(&self, batch_index: u64, root: DataRoot, length: usize) -> Result<()> {
-        let root = if length == 1 {
-            BatchRoot::Single(root)
-        } else {
-            BatchRoot::Multiple((length, root))
-        };
-        Ok(self.kvdb.put(
-            COL_ENTRY_BATCH_ROOT,
-            &batch_index.to_be_bytes(),
-            &root.as_ssz_bytes(),
-        )?)
+    fn put_batch_root_list(&self, root_map: BTreeMap<usize, (DataRoot, usize)>) -> Result<()> {
+        let mut tx = self.kvdb.transaction();
+        for (batch_index, (root, subtree_depth)) in root_map {
+            tx.put(
+                COL_ENTRY_BATCH_ROOT,
+                &encode_batch_root_key(batch_index, subtree_depth),
+                root.as_bytes(),
+            );
+        }
+        Ok(self.kvdb.write(tx)?)
     }
 
-    fn get_batch_root(&self, batch_index: u64) -> Result<Option<BatchRoot>> {
-        let raw = try_option!(self
-            .kvdb
-            .get(COL_ENTRY_BATCH_ROOT, &batch_index.to_be_bytes())?);
-        Ok(Some(BatchRoot::from_ssz_bytes(&raw).map_err(Error::from)?))
+    fn get_batch_root_list(&self) -> Result<MerkleTreeInitialData<DataRoot>> {
+        let mut range_root = None;
+        // A list of `BatchRoot` that can reconstruct the whole merkle tree structure.
+        let mut root_list = Vec::new();
+        // A list of leaf `(index, root_hash)` in the subtrees of some nodes in `root_list`,
+        // and they will be updated in the merkle tree with `fill_leaf` by the caller.
+        let mut leaf_list = Vec::new();
+        let mut expected_index = 0;
+        for (index_bytes, root_bytes) in self.kvdb.iter(COL_ENTRY_BATCH_ROOT) {
+            let (batch_index, subtree_depth) = decode_batch_root_key(index_bytes.as_ref())?;
+            debug!(
+                "load root depth={}, index expected={} get={}",
+                subtree_depth, expected_index, batch_index
+            );
+            let root = DataRoot::from_slice(root_bytes.as_ref());
+            if subtree_depth == 1 {
+                if range_root.is_none() {
+                    // This is expected to be the next leaf.
+                    if batch_index == expected_index {
+                        root_list.push((1, root));
+                        expected_index += 1;
+                    } else {
+                        bail!(
+                            "unexpected chunk leaf, expected={}, get={}",
+                            expected_index,
+                            batch_index
+                        );
+                    }
+                } else {
+                    match batch_index.cmp(&expected_index) {
+                        Ordering::Less => {
+                            // This leaf is within a subtree whose root is known.
+                            leaf_list.push((batch_index, root));
+                        }
+                        Ordering::Equal => {
+                            // A subtree range ends.
+                            range_root = None;
+                            root_list.push((1, root));
+                            expected_index += 1;
+                        }
+                        Ordering::Greater => {
+                            bail!(
+                                "unexpected chunk leaf in range, expected={}, get={}, range={:?}",
+                                expected_index,
+                                batch_index,
+                                range_root,
+                            );
+                        }
+                    }
+                }
+            } else if expected_index == batch_index {
+                range_root = Some(BatchRoot::Multiple((subtree_depth, root)));
+                root_list.push((subtree_depth, root));
+                expected_index += 1 << (subtree_depth - 1);
+            } else {
+                bail!(
+                    "unexpected range root: expected={} get={}",
+                    expected_index,
+                    batch_index
+                );
+            }
+        }
+        Ok(MerkleTreeInitialData {
+            subtree_list: root_list,
+            known_leaves: leaf_list,
+        })
     }
 
-    fn truncate(&self, start_index: u64, batch_size: usize) -> crate::error::Result<()> {
+    fn truncate(&self, start_index: u64, batch_size: usize) -> crate::error::Result<Vec<usize>> {
         let mut tx = self.kvdb.transaction();
         let mut start_batch_index = start_index / batch_size as u64;
         let first_batch_offset = start_index as usize % batch_size;
+        let mut index_to_reseal = Vec::new();
         if first_batch_offset != 0 {
             if let Some(mut first_batch) = self.get_entry_batch(start_batch_index)? {
-                first_batch.truncate(first_batch_offset as usize);
-                tx.put(
-                    COL_ENTRY_BATCH,
-                    &start_batch_index.to_be_bytes(),
-                    &first_batch.as_ssz_bytes(),
-                );
+                index_to_reseal = first_batch
+                    .truncate(first_batch_offset as usize)
+                    .into_iter()
+                    .map(|x| start_batch_index as usize * SEALS_PER_LOAD + x as usize)
+                    .collect();
+                if !first_batch.is_empty() {
+                    tx.put(
+                        COL_ENTRY_BATCH,
+                        &start_batch_index.to_be_bytes(),
+                        &first_batch.as_ssz_bytes(),
+                    );
+                } else {
+                    tx.delete(COL_ENTRY_BATCH, &start_batch_index.to_be_bytes());
+                }
             }
 
             start_batch_index += 1;
@@ -379,19 +477,19 @@ impl FlowDBStore {
             Some((k, _)) => decode_batch_index(k.as_ref())?,
             None => {
                 // The db has no data, so we can just return;
-                return Ok(());
+                return Ok(index_to_reseal);
             }
         };
-        for batch_index in start_batch_index..=end {
+        for batch_index in start_batch_index as usize..=end {
             tx.delete(COL_ENTRY_BATCH, &batch_index.to_be_bytes());
-            tx.delete(COL_ENTRY_BATCH_ROOT, &batch_index.to_be_bytes());
+            tx.delete_prefix(COL_ENTRY_BATCH_ROOT, &batch_index.to_be_bytes());
         }
         self.kvdb.write(tx)?;
-        Ok(())
+        Ok(index_to_reseal)
     }
 }
 
-#[derive(DeriveEncode, DeriveDecode)]
+#[derive(DeriveEncode, DeriveDecode, Clone, Debug)]
 #[ssz(enum_behaviour = "union")]
 pub enum BatchRoot {
     Single(DataRoot),
@@ -409,8 +507,28 @@ pub fn batch_iter(start: u64, end: u64, batch_size: usize) -> Vec<(u64, u64)> {
     list
 }
 
-fn decode_batch_index(data: &[u8]) -> Result<u64> {
-    Ok(u64::from_be_bytes(
+fn try_decode_usize(data: &[u8]) -> Result<usize> {
+    Ok(usize::from_be_bytes(
         data.try_into().map_err(|e| anyhow!("{:?}", e))?,
     ))
+}
+
+fn decode_batch_index(data: &[u8]) -> Result<usize> {
+    try_decode_usize(data)
+}
+
+/// For the same batch_index, we want to process the larger subtree_depth first in iteration.
+fn encode_batch_root_key(batch_index: usize, subtree_depth: usize) -> Vec<u8> {
+    let mut key = batch_index.to_be_bytes().to_vec();
+    key.extend_from_slice(&(usize::MAX - subtree_depth).to_be_bytes());
+    key
+}
+
+fn decode_batch_root_key(data: &[u8]) -> Result<(usize, usize)> {
+    if data.len() != mem::size_of::<usize>() * 2 {
+        bail!("invalid data length");
+    }
+    let batch_index = try_decode_usize(&data[..mem::size_of::<u64>()])?;
+    let subtree_depth = usize::MAX - try_decode_usize(&data[mem::size_of::<u64>()..])?;
+    Ok((batch_index, subtree_depth))
 }
