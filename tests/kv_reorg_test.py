@@ -53,7 +53,8 @@ class ReorgTest(TestFramework):
         trunc=False,
         node_index=0,
     ):
-        chunk_data, tags = create_kv_data(version, reads, writes, access_controls)
+        chunk_data, tags = create_kv_data(
+            version, reads, writes, access_controls)
         if trunc:
             chunk_data = chunk_data[
                 : random.randrange(len(chunk_data) // 2, len(chunk_data))
@@ -62,9 +63,11 @@ class ReorgTest(TestFramework):
             chunk_data, tags if given_tags is None else given_tags
         )
         self.log.info("data root: %s, submissions: %s", data_root, submissions)
-        self.contract.submit(submissions, tx_params=tx_params, node_idx=node_index)
+        self.contract.submit(
+            submissions, tx_params=tx_params, node_idx=node_index)
         wait_until(
-            lambda: self.contract.num_submissions(node_index) == self.next_tx_seq + 1
+            lambda: self.contract.num_submissions(
+                node_index) == self.next_tx_seq + 1
         )
 
         return data_root, chunk_data
@@ -75,7 +78,8 @@ class ReorgTest(TestFramework):
 
         segments = submit_data(client, chunk_data)
         self.log.info(
-            "segments: %s", [(s["root"], s["index"], s["proof"]) for s in segments]
+            "segments: %s", [(s["root"], s["index"], s["proof"])
+                             for s in segments]
         )
         wait_until(lambda: client.ionian_get_file_info(data_root)["finalized"])
 
@@ -95,7 +99,8 @@ class ReorgTest(TestFramework):
         self.blockchain_nodes[0].generate_empty_blocks(12)
         self.submit_data(data_root, chunk_data)
         wait_until(
-            lambda: self.kv_nodes[0].kv_get_trasanction_result(self.next_tx_seq)
+            lambda: self.kv_nodes[0].kv_get_trasanction_result(
+                self.next_tx_seq)
             == "Commit",
         )
 
@@ -105,12 +110,14 @@ class ReorgTest(TestFramework):
             stream_id, key = stream_id_key.split(",")
             self.kv_nodes[0].check_equal(stream_id, key, value)
             assert_equal(
-                self.kv_nodes[0].kv_is_admin(GENESIS_ACCOUNT.address, stream_id), True
+                self.kv_nodes[0].kv_is_admin(
+                    GENESIS_ACCOUNT.address, stream_id), True
             )
 
         # reorg put
         writes = [rand_write() for i in range(20)]
-        data_root, chunk_data = self.submit(MAX_U64, [], writes, [], node_index=1)
+        data_root, chunk_data = self.submit(
+            MAX_U64, [], writes, [], node_index=1)
 
         self.blockchain_nodes[1].generate_empty_blocks(30)
         connect_nodes(self.blockchain_nodes, 0, 1)
@@ -119,7 +126,8 @@ class ReorgTest(TestFramework):
         self.submit_data(data_root, chunk_data)
 
         wait_until(
-            lambda: self.kv_nodes[0].kv_get_trasanction_result(self.next_tx_seq)
+            lambda: self.kv_nodes[0].kv_get_trasanction_result(
+                self.next_tx_seq)
             == "Commit",
         )
 

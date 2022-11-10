@@ -51,6 +51,13 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
                     "start index is greater than value length",
                 ));
             }
+            if pair.end_index == pair.start_index {
+                return Ok(Some(ValueSegment {
+                    version: pair.version,
+                    data: vec![],
+                    size: 0,
+                }));
+            }
             let start_byte_index = pair.start_index + start_index;
             let end_byte_index = std::cmp::min(start_byte_index + len, pair.end_index);
             let start_entry_index = start_byte_index / ENTRY_SIZE as u64;
@@ -59,9 +66,6 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             } else {
                 end_byte_index / ENTRY_SIZE as u64 + 1
             };
-            if start_entry_index == end_entry_index {
-                return Ok(None);
-            }
             if let Some(entry_array) = store_read
                 .get_chunk_by_flow_index(start_entry_index, end_entry_index - start_entry_index)?
             {
@@ -75,10 +79,13 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
                     size: pair.end_index - pair.start_index,
                 }));
             }
-            Ok(None)
-        } else {
-            Ok(None)
+            return Err(error::internal_error("key data is missing"));
         }
+        Ok(Some(ValueSegment {
+            version: 0,
+            data: vec![],
+            size: 0,
+        }))
     }
 
     async fn get_next(
@@ -137,7 +144,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
                     size: pair.end_index - pair.start_index,
                 }));
             }
-            return Ok(None);
+            return Err(error::internal_error("key data is missing"));
         }
         Ok(None)
     }

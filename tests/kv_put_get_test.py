@@ -59,7 +59,8 @@ class KVPutGetTest(TestFramework):
 
     def update_data(self, writes):
         for write in writes:
-            self.data[','.join([write[0], write[1]])] = write[3] if len(write[3]) > 0 else None
+            self.data[','.join([write[0], write[1]])] = write[3] if len(
+                write[3]) > 0 else None
 
     def write_streams(self):
         # first put
@@ -159,17 +160,15 @@ class KVPutGetTest(TestFramework):
         for stream_id_key, value in self.data.items():
             stream_id, key = stream_id_key.split(',')
             self.kv_nodes[0].check_equal(stream_id, key, value)
-        
+
         # delete
         writes = []
         reads = []
-        deleted = []
         flag = 0
         for stream_id_key, value in self.data.items():
             stream_id, key = stream_id_key.split(',')
             if flag % 2 == 0:
                 writes.append(rand_write(stream_id, key, 0))
-                deleted.append()
         self.submit(MAX_U64, [], writes, [])
         wait_until(lambda: self.kv_nodes[0].kv_get_trasanction_result(
             self.next_tx_seq) == "Commit")
@@ -183,9 +182,8 @@ class KVPutGetTest(TestFramework):
         for stream_id_key, value in self.data.items():
             stream_id, key = stream_id_key.split(',')
             self.kv_nodes[0].check_equal(stream_id, key, value)
-        
 
 
 if __name__ == "__main__":
     KVPutGetTest(blockchain_node_configs=dict(
-        [(0, dict(mode="dev",dev_block_interval_ms=50))])).main()
+        [(0, dict(mode="dev", dev_block_interval_ms=50))])).main()

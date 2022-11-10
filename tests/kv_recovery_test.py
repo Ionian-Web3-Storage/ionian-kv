@@ -96,6 +96,7 @@ class KVRecoveryTest(TestFramework):
             stream_id, key = stream_id_key.split(',')
             self.kv_nodes[0].check_equal(stream_id, key, value, second_version)
 
+
 if __name__ == "__main__":
     KVRecoveryTest(blockchain_node_configs=dict(
-        [(0, dict(mode="dev",dev_block_interval_ms=50))])).main()
+        [(0, dict(mode="dev", dev_block_interval_ms=50))])).main()

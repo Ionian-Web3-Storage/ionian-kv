@@ -70,6 +70,12 @@ class KVNode(TestNode):
     def check_equal(self, stream_id, key, value, version=None):
         i = 0
         bytes_per_query = 1024 * 256
+        if value is None:
+            self.rpc_cnt += 1
+            res = self.kv_get_value(stream_id, key, 0, 1, version)
+            assert_equal("", base64.b64decode(res['data'].encode("utf-8")))
+            assert_equal(0, base64.b64decode(res['size']))
+            return
         while i < len(value):
             self.rpc_cnt += 1
             res = self.kv_get_value(
