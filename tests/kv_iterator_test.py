@@ -175,7 +175,7 @@ class KVPutGetTest(TestFramework):
 
             pair = self.kv_nodes[0].next(
                 stream_id, current_key, second_version)
-        assert cnt == len(self.data.items())
+        assert cnt == len(self.data.items()) - deleted
 
         pair = self.kv_nodes[0].seek_to_last(stream_id, second_version)
         current_key = None
@@ -192,7 +192,7 @@ class KVPutGetTest(TestFramework):
 
             pair = self.kv_nodes[0].prev(
                 stream_id, current_key, second_version)
-        assert cnt == len(self.data.items())
+        assert cnt == len(self.data.items()) - deleted
 
 
 if __name__ == "__main__":
