@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use ethereum_types::{H160, H256};
-use shared_types::{AccessControlSet, StreamWriteSet, Transaction};
+use shared_types::{AccessControlSet, KeyValuePair, StreamWriteSet, Transaction};
 use storage::log_store::config::Configurable;
 use storage::log_store::{LogStoreRead, LogStoreWrite};
 
@@ -86,7 +86,25 @@ pub trait StreamRead {
         stream_id: H256,
         key: Arc<Vec<u8>>,
         version: u64,
-    ) -> Result<Option<(shared_types::StreamWrite, u64)>>;
+    ) -> Result<Option<KeyValuePair>>;
+
+    async fn get_next_stream_key_value(
+        &self,
+        stream_id: H256,
+        key: Arc<Vec<u8>>,
+        version: u64,
+    ) -> Result<Option<KeyValuePair>>;
+
+    async fn get_prev_stream_key_value(
+        &self,
+        stream_id: H256,
+        key: Arc<Vec<u8>>,
+        version: u64,
+    ) -> Result<Option<KeyValuePair>>;
+
+    async fn get_first(&self, stream_id: H256, version: u64) -> Result<Option<KeyValuePair>>;
+
+    async fn get_last(&self, stream_id: H256, version: u64) -> Result<Option<KeyValuePair>>;
 }
 
 #[async_trait]

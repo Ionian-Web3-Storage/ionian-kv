@@ -45,7 +45,7 @@ impl SqliteDBStatements {
         "SELECT MAX(version) FROM t_stream WHERE stream_id = :stream_id AND key = :key AND version <= :before";
 
     pub const IS_NEW_STREAM_STATEMENT: &'static str =
-        "SELECT COUNT(*) FROM t_access_control WHERE stream_id = :stream_id AND version <= :version";
+        "SELECT 1 FROM t_access_control WHERE stream_id = :stream_id AND version <= :version LIMIT 1";
 
     pub const IS_SPECIAL_KEY_STATEMENT: &'static str = formatcp!(
         "
@@ -131,6 +131,38 @@ impl SqliteDBStatements {
             stream_id = :stream_id AND key = :key AND
             version <= :version
         ORDER BY version DESC LIMIT 1
+    ";
+
+    pub const GET_NEXT_KEY_VALUE_STATEMENT: &'static str = "
+        SELECT version, key, start_index, end_index FROM 
+            t_stream
+        WHERE
+            stream_id = :stream_id AND key > :key AND version <= :version
+        ORDER BY key ASC, version DESC LIMIT 1
+    ";
+
+    pub const GET_PREV_KEY_VALUE_STATEMENT: &'static str = "
+        SELECT version, key, start_index, end_index FROM 
+            t_stream
+        WHERE
+            stream_id = :stream_id AND key < :key AND version <= :version
+        ORDER BY key DESC, version DESC LIMIT 1
+    ";
+
+    pub const GET_FIRST_KEY_VALUE_STATEMENT: &'static str = "
+        SELECT version, key, start_index, end_index FROM 
+            t_stream
+        WHERE
+            stream_id = :stream_id AND version <= :version
+        ORDER BY key ASC, version DESC LIMIT 1
+    ";
+
+    pub const GET_LAST_KEY_VALUE_STATEMENT: &'static str = "
+        SELECT version, key, start_index, end_index FROM 
+            t_stream
+        WHERE
+            stream_id = :stream_id AND version <= :version
+        ORDER BY key DESC, version DESC LIMIT 1
     ";
 
     pub const CREATE_MISC_TABLE_STATEMENT: &'static str = "

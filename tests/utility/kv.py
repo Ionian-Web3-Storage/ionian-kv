@@ -114,10 +114,10 @@ def rand_key():
     return ''.join([hex(random.randrange(16))[2:] for i in range(len)])
 
 
-def rand_write(stream_id=None, key=None):
+def rand_write(stream_id=None, key=None, size=None):
     return [to_stream_id(random.randrange(0, MAX_STREAM_ID)) if stream_id is None else stream_id,
             rand_key() if key is None else key,
-            random.randrange(MIN_DATA_LENGTH, MAX_DATA_LENGTH)]
+            random.randrange(MIN_DATA_LENGTH, MAX_DATA_LENGTH) if size is None else size]
 
 
 def is_access_control_permission_denied(x):

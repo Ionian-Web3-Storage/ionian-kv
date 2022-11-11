@@ -1,7 +1,9 @@
 mod proof;
 
 use anyhow::bail;
-use append_merkle::{Proof as RawProof, RangeProof as RawRangeProof};
+use append_merkle::{
+    AppendMerkleTree, Proof as RawProof, RangeProof as RawRangeProof, Sha3Algorithm,
+};
 use ethereum_types::{H160, H256};
 use merkle_light::merkle::MerkleTree;
 use merkle_light::proof::Proof as RawFileProof;
@@ -11,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use ssz::Encode;
 use ssz_derive::{Decode as DeriveDecode, Encode as DeriveEncode};
 use std::collections::HashSet;
+use std::fmt;
 use std::hash::Hasher;
 use std::sync::Arc;
 use tiny_keccak::{Hasher as KeccakHasher, Keccak};
@@ -31,6 +34,7 @@ pub type DataRoot = H256;
 
 pub type FlowProof = RawProof<H256>;
 pub type FlowRangeProof = RawRangeProof<H256>;
+pub type Merkle = AppendMerkleTree<H256, Sha3Algorithm>;
 
 // Each chunk is 32 bytes.
 pub const CHUNK_SIZE: usize = 256;
@@ -74,6 +78,21 @@ pub fn compute_segment_size(chunks: usize, chunks_per_segment: usize) -> (usize,
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Chunk(pub [u8; CHUNK_SIZE]);
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, DeriveDecode, DeriveEncode)]
+pub struct TxID {
+    pub seq: u64,
+    pub hash: H256,
+}
+
+impl TxID {
+    pub fn random_hash(seq: u64) -> Self {
+        Self {
+            seq,
+            hash: H256::random(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, DeriveDecode, DeriveEncode, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Transaction {
@@ -109,6 +128,13 @@ impl Transaction {
         h.finalize(e.as_mut());
         e
     }
+
+    pub fn id(&self) -> TxID {
+        TxID {
+            seq: self.seq,
+            hash: self.hash(),
+        }
+    }
 }
 
 pub struct ChunkWithProof {
@@ -123,11 +149,22 @@ pub struct ChunkArrayWithProof {
     pub proof: FlowRangeProof,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, DeriveEncode, DeriveDecode)]
+#[derive(Clone, Eq, PartialEq, DeriveEncode, DeriveDecode)]
 pub struct ChunkArray {
     // The length is exactly a multiple of `CHUNK_SIZE`
     pub data: Vec<u8>,
     pub start_index: u64,
+}
+
+impl fmt::Debug for ChunkArray {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "ChunkArray: start_index={} data_len={}",
+            self.start_index,
+            self.data.len()
+        )
+    }
 }
 
 impl ChunkArray {
@@ -311,6 +348,15 @@ pub struct AccessControl {
     pub key: Arc<Vec<u8>>,
     pub account: H160,
     pub operator: H160,
+}
+
+#[derive(Debug)]
+pub struct KeyValuePair {
+    pub stream_id: H256,
+    pub key: Vec<u8>,
+    pub start_index: u64,
+    pub end_index: u64,
+    pub version: u64,
 }
 
 impl TryFrom<&FileProof> for RawFileProof<[u8; 32]> {

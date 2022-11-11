@@ -1,6 +1,6 @@
 use anyhow::{bail, Result};
 use ethereum_types::{H160, H256};
-use shared_types::{AccessControlSet, StreamWrite, StreamWriteSet};
+use shared_types::{AccessControlSet, KeyValuePair, StreamWriteSet};
 use ssz::{Decode, Encode};
 use std::{path::Path, sync::Arc};
 
@@ -212,17 +212,12 @@ impl StreamStore {
                         ":stream_id": stream_id.as_ssz_bytes(),
                         ":version": convert_to_i64(version),
                     },
-                    |row| row.get(0),
+                    |_| Ok(1),
                 )?;
-                if let Some(raw_data) = rows.next() {
-                    let num: u64 = raw_data?;
-                    if num > 0 {
-                        return Ok(false);
-                    }
-                    Ok(true)
-                } else {
-                    bail!("is_new_stream: unexpected empty rows");
+                if rows.next().is_some() {
+                    return Ok(false);
                 }
+                Ok(true)
             })
             .await
     }
@@ -447,7 +442,7 @@ impl StreamStore {
         stream_id: H256,
         key: Arc<Vec<u8>>,
         version: u64,
-    ) -> Result<Option<(StreamWrite, u64)>> {
+    ) -> Result<Option<KeyValuePair>> {
         self.connection
             .call(move |conn| {
                 let mut stmt = conn.prepare(SqliteDBStatements::GET_STREAM_KEY_VALUE_STATEMENT)?;
@@ -458,15 +453,133 @@ impl StreamStore {
                         ":version": convert_to_i64(version),
                     },
                     |row| {
-                        Ok((
-                            StreamWrite {
-                                stream_id,
-                                key: key.clone(),
-                                start_index: row.get(1)?,
-                                end_index: row.get(2)?,
-                            },
-                            convert_to_u64(row.get(0)?),
-                        ))
+                        Ok(KeyValuePair {
+                            stream_id,
+                            key: vec![],
+                            start_index: row.get(1)?,
+                            end_index: row.get(2)?,
+                            version: convert_to_u64(row.get(0)?),
+                        })
+                    },
+                )?;
+                if let Some(raw_data) = rows.next() {
+                    return Ok(Some(raw_data?));
+                }
+                Ok(None)
+            })
+            .await
+    }
+
+    pub async fn get_next_stream_key_value(
+        &self,
+        stream_id: H256,
+        key: Arc<Vec<u8>>,
+        version: u64,
+    ) -> Result<Option<KeyValuePair>> {
+        self.connection
+            .call(move |conn| {
+                let mut stmt = conn.prepare(SqliteDBStatements::GET_NEXT_KEY_VALUE_STATEMENT)?;
+                let mut rows = stmt.query_map(
+                    named_params! {
+                        ":stream_id": stream_id.as_ssz_bytes(),
+                        ":key": key,
+                        ":version": convert_to_i64(version),
+                    },
+                    |row| {
+                        Ok(KeyValuePair {
+                            stream_id,
+                            key: row.get(1)?,
+                            start_index: row.get(2)?,
+                            end_index: row.get(3)?,
+                            version: convert_to_u64(row.get(0)?),
+                        })
+                    },
+                )?;
+                if let Some(raw_data) = rows.next() {
+                    return Ok(Some(raw_data?));
+                }
+                Ok(None)
+            })
+            .await
+    }
+
+    pub async fn get_prev_stream_key_value(
+        &self,
+        stream_id: H256,
+        key: Arc<Vec<u8>>,
+        version: u64,
+    ) -> Result<Option<KeyValuePair>> {
+        self.connection
+            .call(move |conn| {
+                let mut stmt = conn.prepare(SqliteDBStatements::GET_PREV_KEY_VALUE_STATEMENT)?;
+                let mut rows = stmt.query_map(
+                    named_params! {
+                        ":stream_id": stream_id.as_ssz_bytes(),
+                        ":key": key,
+                        ":version": convert_to_i64(version),
+                    },
+                    |row| {
+                        Ok(KeyValuePair {
+                            stream_id,
+                            key: row.get(1)?,
+                            start_index: row.get(2)?,
+                            end_index: row.get(3)?,
+                            version: convert_to_u64(row.get(0)?),
+                        })
+                    },
+                )?;
+                if let Some(raw_data) = rows.next() {
+                    return Ok(Some(raw_data?));
+                }
+                Ok(None)
+            })
+            .await
+    }
+
+    pub async fn get_first(&self, stream_id: H256, version: u64) -> Result<Option<KeyValuePair>> {
+        self.connection
+            .call(move |conn| {
+                let mut stmt = conn.prepare(SqliteDBStatements::GET_FIRST_KEY_VALUE_STATEMENT)?;
+                let mut rows = stmt.query_map(
+                    named_params! {
+                        ":stream_id": stream_id.as_ssz_bytes(),
+                        ":version": convert_to_i64(version),
+                    },
+                    |row| {
+                        Ok(KeyValuePair {
+                            stream_id,
+                            key: row.get(1)?,
+                            start_index: row.get(2)?,
+                            end_index: row.get(3)?,
+                            version: convert_to_u64(row.get(0)?),
+                        })
+                    },
+                )?;
+                if let Some(raw_data) = rows.next() {
+                    return Ok(Some(raw_data?));
+                }
+                Ok(None)
+            })
+            .await
+    }
+
+    pub async fn get_last(&self, stream_id: H256, version: u64) -> Result<Option<KeyValuePair>> {
+        self.connection
+            .call(move |conn| {
+                let mut stmt = conn.prepare(SqliteDBStatements::GET_LAST_KEY_VALUE_STATEMENT)?;
+                let mut rows = stmt.query_map(
+                    named_params! {
+                        ":stream_id": stream_id.as_ssz_bytes(),
+                        ":version": convert_to_i64(version),
+                    },
+                    |row| {
+                        Ok(KeyValuePair {
+                            stream_id,
+                            key: row.get(1)?,
+                            start_index: row.get(2)?,
+                            end_index: row.get(3)?,
+                            version: convert_to_u64(row.get(0)?),
+                        })
                     },
                 )?;
                 if let Some(raw_data) = rows.next() {

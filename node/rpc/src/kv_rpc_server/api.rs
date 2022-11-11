@@ -2,7 +2,7 @@ use ethereum_types::{H160, H256};
 use jsonrpsee::core::RpcResult;
 use jsonrpsee::proc_macros::rpc;
 
-use crate::types::{Segment, ValueSegment};
+use crate::types::{KeyValueSegment, Segment, ValueSegment};
 
 #[rpc(server, client, namespace = "kv")]
 pub trait KeyValueRpc {
@@ -18,6 +18,44 @@ pub trait KeyValueRpc {
         len: u64,
         version: Option<u64>,
     ) -> RpcResult<Option<ValueSegment>>;
+
+    #[method(name = "getNext")]
+    async fn get_next(
+        &self,
+        stream_id: H256,
+        key: Segment,
+        start_index: u64,
+        len: u64,
+        version: Option<u64>,
+    ) -> RpcResult<Option<KeyValueSegment>>;
+
+    #[method(name = "getPrev")]
+    async fn get_prev(
+        &self,
+        stream_id: H256,
+        key: Segment,
+        start_index: u64,
+        len: u64,
+        version: Option<u64>,
+    ) -> RpcResult<Option<KeyValueSegment>>;
+
+    #[method(name = "getFirst")]
+    async fn get_first(
+        &self,
+        stream_id: H256,
+        start_index: u64,
+        len: u64,
+        version: Option<u64>,
+    ) -> RpcResult<Option<KeyValueSegment>>;
+
+    #[method(name = "getLast")]
+    async fn get_last(
+        &self,
+        stream_id: H256,
+        start_index: u64,
+        len: u64,
+        version: Option<u64>,
+    ) -> RpcResult<Option<KeyValueSegment>>;
 
     #[method(name = "getTransactionResult")]
     async fn get_trasanction_result(&self, tx_seq: u64) -> RpcResult<Option<String>>;

@@ -7,4 +7,5 @@ pub struct Config {
     pub chunks_per_segment: usize,
     pub ionian_nodes: Vec<String>,
     pub max_query_len_in_bytes: u64,
+    pub max_response_body_in_bytes: u32,
 }

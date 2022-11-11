@@ -402,7 +402,7 @@ class TestFramework:
 
         for node in self.blockchain_nodes:
             node.stop()
-    
+
     def stop_kv_node(self, index):
         self.kv_nodes[index].stop()
 

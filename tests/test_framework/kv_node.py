@@ -11,6 +11,8 @@ from utility.utils import (
     assert_equal
 )
 
+bytes_per_query = 1024 * 256
+
 
 class KVNode(TestNode):
     def __init__(
@@ -68,8 +70,14 @@ class KVNode(TestNode):
         super().start()
 
     def check_equal(self, stream_id, key, value, version=None):
+        global bytes_per_query
         i = 0
-        bytes_per_query = 1024 * 256
+        if value is None:
+            self.rpc_cnt += 1
+            res = self.kv_get_value(stream_id, key, 0, 1, version)
+            assert_equal(b'', base64.b64decode(res['data'].encode("utf-8")))
+            assert res['size'] == 0
+            return
         while i < len(value):
             self.rpc_cnt += 1
             res = self.kv_get_value(
@@ -84,12 +92,96 @@ class KVNode(TestNode):
                 ), value[i:])
             i += bytes_per_query
 
+    def next(self, stream_id, key, version=None):
+        global bytes_per_query
+        start_index = 0
+        ans = {
+            'data': b''
+        }
+        while True:
+            res = self.kv_get_next(
+                stream_id, key, start_index, bytes_per_query, version)
+            if res is None:
+                return None
+            ans['size'] = res['size']
+            ans['key'] = base64.b64decode(res['key'].encode("utf-8")).hex()
+            ans['data'] += base64.b64decode(res['data'].encode("utf-8"))
+            if len(ans['data']) == ans['size']:
+                return ans
+            start_index += bytes_per_query
+    
+    def prev(self, stream_id, key, version=None):
+        global bytes_per_query
+        start_index = 0
+        ans = {
+            'data': b''
+        }
+        while True:
+            res = self.kv_get_prev(
+                stream_id, key, start_index, bytes_per_query, version)
+            if res is None:
+                return None
+            ans['size'] = res['size']
+            ans['key'] = base64.b64decode(res['key'].encode("utf-8")).hex()
+            ans['data'] += base64.b64decode(res['data'].encode("utf-8"))
+            if len(ans['data']) == ans['size']:
+                return ans
+            start_index += bytes_per_query
+    
+    def seek_to_first(self, stream_id, version=None):
+        global bytes_per_query
+        start_index = 0
+        ans = {
+            'data': b''
+        }
+        while True:
+            res = self.kv_get_first(
+                stream_id, start_index, bytes_per_query, version)
+            if res is None:
+                return None
+            ans['size'] = res['size']
+            ans['key'] = base64.b64decode(res['key'].encode("utf-8")).hex()
+            ans['data'] += base64.b64decode(res['data'].encode("utf-8"))
+            if len(ans['data']) == ans['size']:
+                return ans
+            start_index += bytes_per_query
+    
+    def seek_to_last(self, stream_id, version=None):
+        global bytes_per_query
+        start_index = 0
+        ans = {
+            'data': b''
+        }
+        while True:
+            res = self.kv_get_last(
+                stream_id, start_index, bytes_per_query, version)
+            if res is None:
+                return None
+            ans['size'] = res['size']
+            ans['key'] = base64.b64decode(res['key'].encode("utf-8")).hex()
+            ans['data'] += base64.b64decode(res['data'].encode("utf-8"))
+            if len(ans['data']) == ans['size']:
+                return ans
+            start_index += bytes_per_query
+
     def hex_to_segment(self, x):
         return base64.b64encode(bytes.fromhex(x)).decode("utf-8")
 
     # rpc
     def kv_get_value(self, stream_id, key, start_index, size, version=None):
         return self.rpc.kv_getValue([stream_id, self.hex_to_segment(key), start_index, size, version])
+
+    def kv_get_next(self, stream_id, key, start_index, size, version=None):
+        return self.rpc.kv_getNext([stream_id, self.hex_to_segment(key), start_index, size, version])
+    
+    def kv_get_prev(self, stream_id, key, start_index, size, version=None):
+        return self.rpc.kv_getPrev([stream_id, self.hex_to_segment(key), start_index, size, version])
+
+    def kv_get_first(self, stream_id, start_index, size, version=None):
+        return self.rpc.kv_getFirst([stream_id, start_index, size, version])
+    
+    def kv_get_last(self, stream_id, start_index, size, version=None):
+        return self.rpc.kv_getLast([stream_id, start_index, size, version])
 
     def kv_get_trasanction_result(self, tx_seq):
         return self.rpc.kv_getTransactionResult([tx_seq])
