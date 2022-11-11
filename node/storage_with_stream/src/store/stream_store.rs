@@ -212,17 +212,12 @@ impl StreamStore {
                         ":stream_id": stream_id.as_ssz_bytes(),
                         ":version": convert_to_i64(version),
                     },
-                    |row| row.get(0),
+                    |_| Ok(1),
                 )?;
-                if let Some(raw_data) = rows.next() {
-                    let num: u64 = raw_data?;
-                    if num > 0 {
-                        return Ok(false);
-                    }
-                    Ok(true)
-                } else {
-                    bail!("is_new_stream: unexpected empty rows");
+                if rows.next().is_some() {
+                    return Ok(false);
                 }
+                Ok(true)
             })
             .await
     }

@@ -45,7 +45,7 @@ impl SqliteDBStatements {
         "SELECT MAX(version) FROM t_stream WHERE stream_id = :stream_id AND key = :key AND version <= :before";
 
     pub const IS_NEW_STREAM_STATEMENT: &'static str =
-        "SELECT COUNT(*) FROM t_access_control WHERE stream_id = :stream_id AND version <= :version";
+        "SELECT 1 FROM t_access_control WHERE stream_id = :stream_id AND version <= :version LIMIT 1";
 
     pub const IS_SPECIAL_KEY_STATEMENT: &'static str = formatcp!(
         "
