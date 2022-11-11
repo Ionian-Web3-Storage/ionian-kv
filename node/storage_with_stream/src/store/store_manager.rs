@@ -310,6 +310,25 @@ impl StreamRead for StoreManager {
             .get_next_stream_key_value(stream_id, key, version)
             .await
     }
+
+    async fn get_prev_stream_key_value(
+        &self,
+        stream_id: H256,
+        key: Arc<Vec<u8>>,
+        version: u64,
+    ) -> Result<Option<KeyValuePair>> {
+        self.stream_store
+            .get_prev_stream_key_value(stream_id, key, version)
+            .await
+    }
+
+    async fn get_first(&self, stream_id: H256, version: u64) -> Result<Option<KeyValuePair>> {
+        self.stream_store.get_first(stream_id, version).await
+    }
+
+    async fn get_last(&self, stream_id: H256, version: u64) -> Result<Option<KeyValuePair>> {
+        self.stream_store.get_last(stream_id, version).await
+    }
 }
 
 #[async_trait]

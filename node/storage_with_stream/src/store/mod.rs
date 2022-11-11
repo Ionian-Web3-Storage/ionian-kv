@@ -94,6 +94,17 @@ pub trait StreamRead {
         key: Arc<Vec<u8>>,
         version: u64,
     ) -> Result<Option<KeyValuePair>>;
+
+    async fn get_prev_stream_key_value(
+        &self,
+        stream_id: H256,
+        key: Arc<Vec<u8>>,
+        version: u64,
+    ) -> Result<Option<KeyValuePair>>;
+
+    async fn get_first(&self, stream_id: H256, version: u64) -> Result<Option<KeyValuePair>>;
+
+    async fn get_last(&self, stream_id: H256, version: u64) -> Result<Option<KeyValuePair>>;
 }
 
 #[async_trait]
