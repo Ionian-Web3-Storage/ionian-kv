@@ -109,6 +109,60 @@ class KVNode(TestNode):
             if len(ans['data']) == ans['size']:
                 return ans
             start_index += bytes_per_query
+    
+    def prev(self, stream_id, key, version=None):
+        global bytes_per_query
+        start_index = 0
+        ans = {
+            'data': b''
+        }
+        while True:
+            res = self.kv_get_prev(
+                stream_id, key, start_index, bytes_per_query, version)
+            if res is None:
+                return None
+            ans['size'] = res['size']
+            ans['key'] = base64.b64decode(res['key'].encode("utf-8")).hex()
+            ans['data'] += base64.b64decode(res['data'].encode("utf-8"))
+            if len(ans['data']) == ans['size']:
+                return ans
+            start_index += bytes_per_query
+    
+    def seek_to_first(self, stream_id, version=None):
+        global bytes_per_query
+        start_index = 0
+        ans = {
+            'data': b''
+        }
+        while True:
+            res = self.kv_get_first(
+                stream_id, start_index, bytes_per_query, version)
+            if res is None:
+                return None
+            ans['size'] = res['size']
+            ans['key'] = base64.b64decode(res['key'].encode("utf-8")).hex()
+            ans['data'] += base64.b64decode(res['data'].encode("utf-8"))
+            if len(ans['data']) == ans['size']:
+                return ans
+            start_index += bytes_per_query
+    
+    def seek_to_last(self, stream_id, version=None):
+        global bytes_per_query
+        start_index = 0
+        ans = {
+            'data': b''
+        }
+        while True:
+            res = self.kv_get_last(
+                stream_id, start_index, bytes_per_query, version)
+            if res is None:
+                return None
+            ans['size'] = res['size']
+            ans['key'] = base64.b64decode(res['key'].encode("utf-8")).hex()
+            ans['data'] += base64.b64decode(res['data'].encode("utf-8"))
+            if len(ans['data']) == ans['size']:
+                return ans
+            start_index += bytes_per_query
 
     def hex_to_segment(self, x):
         return base64.b64encode(bytes.fromhex(x)).decode("utf-8")
@@ -119,6 +173,15 @@ class KVNode(TestNode):
 
     def kv_get_next(self, stream_id, key, start_index, size, version=None):
         return self.rpc.kv_getNext([stream_id, self.hex_to_segment(key), start_index, size, version])
+    
+    def kv_get_prev(self, stream_id, key, start_index, size, version=None):
+        return self.rpc.kv_getPrev([stream_id, self.hex_to_segment(key), start_index, size, version])
+
+    def kv_get_first(self, stream_id, start_index, size, version=None):
+        return self.rpc.kv_getFirst([stream_id, start_index, size, version])
+    
+    def kv_get_last(self, stream_id, start_index, size, version=None):
+        return self.rpc.kv_getLast([stream_id, start_index, size, version])
 
     def kv_get_trasanction_result(self, tx_seq):
         return self.rpc.kv_getTransactionResult([tx_seq])

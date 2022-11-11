@@ -81,22 +81,42 @@ class KVPutGetTest(TestFramework):
                 GENESIS_ACCOUNT.address, stream_id), True)
 
         # iterate
-        current_key = ''
+        pair = self.kv_nodes[0].seek_to_first(stream_id)
+        current_key = None
         cnt = 0
+        deleted = 0
         writes = []
-        while current_key != None:
-            pair = self.kv_nodes[0].next(stream_id, current_key)
-            if pair is None:
-                break
-            if cnt % 2 == 0:
-                writes.append(rand_write(stream_id, pair['key'], 0))
+        while pair != None:
             cnt += 1
-            assert current_key < pair['key']
+            if current_key is not None:
+                assert current_key < pair['key']
             current_key = pair['key']
             tmp = ','.join([stream_id, pair['key']])
             assert tmp in self.data
             value = self.data[tmp]
             assert_equal(value, pair['data'])
+            if cnt % 3 != 0:
+                writes.append(rand_write(stream_id, pair['key'], 0))
+                deleted += 1
+
+            pair = self.kv_nodes[0].next(stream_id, current_key)
+        assert cnt == len(self.data.items())
+
+        # iterate(reverse)
+        pair = self.kv_nodes[0].seek_to_last(stream_id)
+        current_key = None
+        cnt = 0
+        while pair != None:
+            cnt += 1
+            if current_key is not None:
+                assert current_key > pair['key']
+            current_key = pair['key']
+            tmp = ','.join([stream_id, pair['key']])
+            assert tmp in self.data
+            value = self.data[tmp]
+            assert_equal(value, pair['data'])
+
+            pair = self.kv_nodes[0].prev(stream_id, current_key)
         assert cnt == len(self.data.items())
 
         # delete
@@ -107,38 +127,72 @@ class KVPutGetTest(TestFramework):
         self.next_tx_seq += 1
 
         # iterate at first version
-        current_key = ''
+        pair = self.kv_nodes[0].seek_to_first(stream_id, first_version)
+        current_key = None
         cnt = 0
-        while current_key != None:
-            pair = self.kv_nodes[0].next(stream_id, current_key, first_version)
-            if pair is None:
-                break
+        while pair != None:
             cnt += 1
-            assert current_key < pair['key']
+            if current_key is not None:
+                assert current_key < pair['key']
             current_key = pair['key']
             tmp = ','.join([stream_id, pair['key']])
             assert tmp in self.data
             value = self.data[tmp]
             assert_equal(value, pair['data'])
+
+            pair = self.kv_nodes[0].next(stream_id, current_key, first_version)
+        assert cnt == len(self.data.items())
+
+        pair = self.kv_nodes[0].seek_to_last(stream_id, first_version)
+        current_key = None
+        cnt = 0
+        while pair != None:
+            cnt += 1
+            if current_key is not None:
+                assert current_key > pair['key']
+            current_key = pair['key']
+            tmp = ','.join([stream_id, pair['key']])
+            assert tmp in self.data
+            value = self.data[tmp]
+            assert_equal(value, pair['data'])
+
+            pair = self.kv_nodes[0].prev(stream_id, current_key, first_version)
         assert cnt == len(self.data.items())
 
         # iterate at second version
-        current_key = ''
+        pair = self.kv_nodes[0].seek_to_first(stream_id, second_version)
+        current_key = None
         cnt = 0
-        while current_key != None:
-            pair = self.kv_nodes[0].next(
-                stream_id, current_key, second_version)
-            if pair is None:
-                break
+        while pair != None:
             cnt += 1
-            assert current_key < pair['key']
-            assert pair['size'] > 0
+            if current_key is not None:
+                assert current_key < pair['key']
             current_key = pair['key']
             tmp = ','.join([stream_id, pair['key']])
             assert tmp in self.data
             value = self.data[tmp]
             assert_equal(value, pair['data'])
-        assert cnt == 10
+
+            pair = self.kv_nodes[0].next(
+                stream_id, current_key, second_version)
+        assert cnt == len(self.data.items())
+
+        pair = self.kv_nodes[0].seek_to_last(stream_id, second_version)
+        current_key = None
+        cnt = 0
+        while pair != None:
+            cnt += 1
+            if current_key is not None:
+                assert current_key > pair['key']
+            current_key = pair['key']
+            tmp = ','.join([stream_id, pair['key']])
+            assert tmp in self.data
+            value = self.data[tmp]
+            assert_equal(value, pair['data'])
+
+            pair = self.kv_nodes[0].prev(
+                stream_id, current_key, second_version)
+        assert cnt == len(self.data.items())
 
 
 if __name__ == "__main__":
