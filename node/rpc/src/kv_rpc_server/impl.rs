@@ -120,6 +120,10 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             return Err(error::invalid_params("len", "query length too large"));
         }
 
+        if key.0.is_empty() {
+            return Err(error::invalid_params("key", "key is empty"));
+        }
+
         let before_version = version.unwrap_or(u64::MAX);
 
         let store_read = self.ctx.store.read().await;
@@ -158,6 +162,10 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             return Err(error::invalid_params("len", "query length too large"));
         }
 
+        if key.0.is_empty() {
+            return Err(error::invalid_params("key", "key is empty"));
+        }
+
         let before_version = version.unwrap_or(u64::MAX);
 
         let store_read = self.ctx.store.read().await;
@@ -190,6 +198,10 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
 
         if len > self.ctx.config.max_query_len_in_bytes {
             return Err(error::invalid_params("len", "query length too large"));
+        }
+
+        if key.0.is_empty() {
+            return Err(error::invalid_params("key", "key is empty"));
         }
 
         let before_version = version.unwrap_or(u64::MAX);
@@ -299,6 +311,10 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
     ) -> RpcResult<bool> {
         debug!("kv_hasWritePermission()");
 
+        if key.0.is_empty() {
+            return Err(error::invalid_params("key", "key is empty"));
+        }
+
         let before_version = version.unwrap_or(u64::MAX);
 
         Ok(self
@@ -337,6 +353,10 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
     ) -> RpcResult<bool> {
         debug!("kv_isSpecialKey()");
 
+        if key.0.is_empty() {
+            return Err(error::invalid_params("key", "key is empty"));
+        }
+
         let before_version = version.unwrap_or(u64::MAX);
 
         Ok(self
@@ -356,6 +376,10 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
         version: Option<u64>,
     ) -> RpcResult<bool> {
         debug!("kv_isWriterOfKey()");
+
+        if key.0.is_empty() {
+            return Err(error::invalid_params("key", "key is empty"));
+        }
 
         let before_version = version.unwrap_or(u64::MAX);
 
