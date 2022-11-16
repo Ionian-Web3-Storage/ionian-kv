@@ -133,12 +133,28 @@ impl SqliteDBStatements {
         ORDER BY version DESC LIMIT 1
     ";
 
+    pub const GET_NEXT_KEY_VALUE_STATEMENT_INCLUSIVE: &'static str = "
+        SELECT version, key, start_index, end_index FROM 
+            t_stream
+        WHERE
+            stream_id = :stream_id AND key >= :key AND version <= :version
+        ORDER BY key ASC, version DESC LIMIT 1
+    ";
+
     pub const GET_NEXT_KEY_VALUE_STATEMENT: &'static str = "
         SELECT version, key, start_index, end_index FROM 
             t_stream
         WHERE
             stream_id = :stream_id AND key > :key AND version <= :version
         ORDER BY key ASC, version DESC LIMIT 1
+    ";
+
+    pub const GET_PREV_KEY_VALUE_STATEMENT_INCLUSIVE: &'static str = "
+        SELECT version, key, start_index, end_index FROM 
+            t_stream
+        WHERE
+            stream_id = :stream_id AND key <= :key AND version <= :version
+        ORDER BY key DESC, version DESC LIMIT 1
     ";
 
     pub const GET_PREV_KEY_VALUE_STATEMENT: &'static str = "

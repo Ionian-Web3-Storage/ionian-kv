@@ -109,7 +109,7 @@ class KVNode(TestNode):
             if len(ans['data']) == ans['size']:
                 return ans
             start_index += bytes_per_query
-    
+
     def prev(self, stream_id, key, version=None):
         global bytes_per_query
         start_index = 0
@@ -127,7 +127,7 @@ class KVNode(TestNode):
             if len(ans['data']) == ans['size']:
                 return ans
             start_index += bytes_per_query
-    
+
     def seek_to_first(self, stream_id, version=None):
         global bytes_per_query
         start_index = 0
@@ -145,7 +145,7 @@ class KVNode(TestNode):
             if len(ans['data']) == ans['size']:
                 return ans
             start_index += bytes_per_query
-    
+
     def seek_to_last(self, stream_id, version=None):
         global bytes_per_query
         start_index = 0
@@ -172,14 +172,14 @@ class KVNode(TestNode):
         return self.rpc.kv_getValue([stream_id, self.hex_to_segment(key), start_index, size, version])
 
     def kv_get_next(self, stream_id, key, start_index, size, version=None):
-        return self.rpc.kv_getNext([stream_id, self.hex_to_segment(key), start_index, size, version])
-    
+        return self.rpc.kv_getNext([stream_id, self.hex_to_segment(key), start_index, size, False, version])
+
     def kv_get_prev(self, stream_id, key, start_index, size, version=None):
-        return self.rpc.kv_getPrev([stream_id, self.hex_to_segment(key), start_index, size, version])
+        return self.rpc.kv_getPrev([stream_id, self.hex_to_segment(key), start_index, size, False, version])
 
     def kv_get_first(self, stream_id, start_index, size, version=None):
         return self.rpc.kv_getFirst([stream_id, start_index, size, version])
-    
+
     def kv_get_last(self, stream_id, start_index, size, version=None):
         return self.rpc.kv_getLast([stream_id, start_index, size, version])
 

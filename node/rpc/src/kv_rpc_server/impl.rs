@@ -154,6 +154,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
         key: Segment,
         start_index: u64,
         len: u64,
+        inclusive: bool,
         version: Option<u64>,
     ) -> RpcResult<Option<KeyValueSegment>> {
         debug!("kv_getNext()");
@@ -171,7 +172,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
         let store_read = self.ctx.store.read().await;
         let mut next_key = Arc::new(key.0);
         while let Some(pair) = store_read
-            .get_next_stream_key_value(stream_id, next_key.clone(), before_version)
+            .get_next_stream_key_value(stream_id, next_key.clone(), inclusive, before_version)
             .await?
         {
             // skip deleted keys
@@ -192,6 +193,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
         key: Segment,
         start_index: u64,
         len: u64,
+        inclusive: bool,
         version: Option<u64>,
     ) -> RpcResult<Option<KeyValueSegment>> {
         debug!("kv_getPrev()");
@@ -209,7 +211,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
         let store_read = self.ctx.store.read().await;
         let mut next_key = Arc::new(key.0);
         while let Some(pair) = store_read
-            .get_prev_stream_key_value(stream_id, next_key.clone(), before_version)
+            .get_prev_stream_key_value(stream_id, next_key.clone(), inclusive, before_version)
             .await?
         {
             // skip deleted keys
@@ -247,7 +249,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             // TODO: resolve this in sql statements?
             if pair.end_index == pair.start_index {
                 result = store_read
-                    .get_next_stream_key_value(stream_id, Arc::new(pair.key), before_version)
+                    .get_next_stream_key_value(stream_id, Arc::new(pair.key), false, before_version)
                     .await?;
                 continue;
             }
@@ -280,7 +282,7 @@ impl KeyValueRpcServer for KeyValueRpcServerImpl {
             // TODO: resolve this in sql statements?
             if pair.end_index == pair.start_index {
                 result = store_read
-                    .get_prev_stream_key_value(stream_id, Arc::new(pair.key), before_version)
+                    .get_prev_stream_key_value(stream_id, Arc::new(pair.key), false, before_version)
                     .await?;
                 continue;
             }
