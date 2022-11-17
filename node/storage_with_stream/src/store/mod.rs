@@ -92,6 +92,7 @@ pub trait StreamRead {
         &self,
         stream_id: H256,
         key: Arc<Vec<u8>>,
+        inclusive: bool,
         version: u64,
     ) -> Result<Option<KeyValuePair>>;
 
@@ -99,6 +100,7 @@ pub trait StreamRead {
         &self,
         stream_id: H256,
         key: Arc<Vec<u8>>,
+        inclusive: bool,
         version: u64,
     ) -> Result<Option<KeyValuePair>>;
 

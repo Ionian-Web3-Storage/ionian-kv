@@ -26,6 +26,7 @@ pub trait KeyValueRpc {
         key: Segment,
         start_index: u64,
         len: u64,
+        inclusive: bool,
         version: Option<u64>,
     ) -> RpcResult<Option<KeyValueSegment>>;
 
@@ -36,6 +37,7 @@ pub trait KeyValueRpc {
         key: Segment,
         start_index: u64,
         len: u64,
+        inclusive: bool,
         version: Option<u64>,
     ) -> RpcResult<Option<KeyValueSegment>>;
 

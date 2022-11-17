@@ -475,10 +475,15 @@ impl StreamStore {
         stream_id: H256,
         key: Arc<Vec<u8>>,
         version: u64,
+        inclusive: bool,
     ) -> Result<Option<KeyValuePair>> {
         self.connection
             .call(move |conn| {
-                let mut stmt = conn.prepare(SqliteDBStatements::GET_NEXT_KEY_VALUE_STATEMENT)?;
+                let mut stmt = if inclusive {
+                    conn.prepare(SqliteDBStatements::GET_NEXT_KEY_VALUE_STATEMENT_INCLUSIVE)?
+                } else {
+                    conn.prepare(SqliteDBStatements::GET_NEXT_KEY_VALUE_STATEMENT)?
+                };
                 let mut rows = stmt.query_map(
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
@@ -508,10 +513,15 @@ impl StreamStore {
         stream_id: H256,
         key: Arc<Vec<u8>>,
         version: u64,
+        inclusive: bool,
     ) -> Result<Option<KeyValuePair>> {
         self.connection
             .call(move |conn| {
-                let mut stmt = conn.prepare(SqliteDBStatements::GET_PREV_KEY_VALUE_STATEMENT)?;
+                let mut stmt = if inclusive {
+                    conn.prepare(SqliteDBStatements::GET_PREV_KEY_VALUE_STATEMENT_INCLUSIVE)?
+                } else {
+                    conn.prepare(SqliteDBStatements::GET_PREV_KEY_VALUE_STATEMENT)?
+                };
                 let mut rows = stmt.query_map(
                     named_params! {
                         ":stream_id": stream_id.as_ssz_bytes(),
